@@ -1,0 +1,36 @@
+# Mise en ligne automatique : à chaque nouvelle version envoyée sur GitHub (branche main),
+# le jeu est publié sur GitHub Pages (https://thibut34.github.io/developgames/).
+name: Mise en ligne
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # bouton « Run workflow » pour relancer à la main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: mise-en-ligne
+  cancel-in-progress: false
+
+jobs:
+  envoi:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Préparation des fichiers du jeu
+        run: |
+          mkdir _site
+          cp -r index.html style.css js _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploiement
+        uses: actions/deploy-pages@v4
