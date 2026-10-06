@@ -1,0 +1,15 @@
+{
+  "name": "DevelopGames",
+  "short_name": "DevelopGames",
+  "description": "Bâtissez votre cité, du hameau à la Grande Cathédrale.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#2f6f9f",
+  "theme_color": "#1b2b20",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

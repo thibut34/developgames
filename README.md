@@ -1,29 +1,41 @@
 # DevelopGames
 
-Jeu de développement de village/cité dans le navigateur (JavaScript + Canvas, aucune dépendance).
+Jeu de construction de cité dans le navigateur : on fonde un hameau sur une île et on le développe jusqu'à bâtir la Grande Cathédrale.
+JavaScript pur + Canvas, aucune dépendance, jouable sur PC et téléphone (installable comme une appli).
 
-## Lancer le jeu
+**Jouer :** https://thibut34.github.io/developgames/
+
+## Contenu
+
+- Vue isométrique, île générée au hasard (prairie, terre fertile, forêts, rochers, montagnes, eau).
+- 5 ères : Hameau → Village → Bourg → Ville → Cité, puis la merveille finale (victoire).
+- 21 bâtiments : habitations, ferme, pêcheur, chasseur, bûcheron, carrière, mine, forge, entrepôt, puits, chapelle, marché, pompiers, tour de garde, taverne, école, comptoir, hôtel des monnaies, jardin, fontaine, statue, parc, Grande Cathédrale.
+- Routes : un bâtiment ne fonctionne que s'il est relié à l'hôtel de ville.
+- Habitations à 4 niveaux (cabane → maison → maison bourgeoise → villa) selon les services à proximité.
+- Ouvriers, bonheur, impôts, entretien, chaînes de production (fer + bois → outils).
+- Saisons (pas de récolte en hiver, chauffage au bois), météo, événements (incendies, bandits, épidémies, caravanes, migrants…).
+- Objectifs guidés, commerce, statistiques, journal, mini-carte, sons, sauvegarde automatique + export/import.
+
+## Développement
 
 ```bash
-python -m http.server 8000
+python serve.py
 ```
 
-Puis ouvrir http://localhost:8000.
+Puis ouvrir http://localhost:8000 (serveur sans cache : chaque modification est visible au rechargement).
 
-## Jouer
+- `js/config.js` : toutes les données et l'équilibrage (bâtiments, coûts, ères, objectifs…)
+- `js/game.js` : moteur (simulation jour par jour, routes, besoins, événements, sauvegarde)
+- `js/world.js` : génération de l'île
+- `js/render.js`, `js/draw.js`, `js/sprites.js`, `js/fx.js`, `js/agents.js` : rendu isométrique et effets
+- `js/ui.js`, `js/input.js`, `js/minimap.js`, `js/audio.js` : interface, contrôles, mini-carte, sons
+- `js/main.js` : boucle de jeu et liaison de l'ensemble
 
-- **Glisser** pour déplacer la carte, **molette / pincer** pour zoomer.
-- Choisir un bâtiment en bas puis toucher la carte pour le construire.
-- Les habitants travaillent dans les bâtiments dans l'ordre de construction ; sans assez d'ouvriers, un bâtiment s'endort (💤).
-- Chaque habitant mange de la nourriture et paie un peu d'or par jour. La population grandit tant qu'il reste de la place et de quoi manger.
-- La partie est sauvegardée automatiquement dans le navigateur.
+### Test d'équilibrage automatique
 
-## Structure
+http://localhost:8000/tests/simulation.html lance un joueur robot (`tests/bot.js`) sur plusieurs cartes
+et affiche son évolution jusqu'à la victoire. Paramètres : `?seeds=1,2,3&days=3000`.
 
-- `js/config.js` — données : bâtiments, coûts, réglages d'équilibrage
-- `js/world.js` — génération de la carte
-- `js/game.js` — logique (construction, simulation, sauvegarde)
-- `js/render.js` — dessin sur le canvas
-- `js/input.js` — souris et tactile
-- `js/ui.js` — interface HTML
-- `js/main.js` — boucle de jeu
+### Mise en ligne
+
+Chaque envoi sur `main` publie automatiquement le jeu sur GitHub Pages (`.github/workflows/mise-en-ligne.yml`).

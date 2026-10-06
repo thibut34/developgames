@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulation d'équilibrage</title>
+  <style>
+    body { margin: 0; padding: 16px; background: #1d2b22; color: #f3f0e6; font: 13px/1.5 ui-monospace, Consolas, monospace; }
+    h1 { font: 600 18px system-ui, sans-serif; }
+    pre { white-space: pre-wrap; }
+    .ok { color: #7ddc8c; } .ko { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <h1>Simulation automatique (joueur robot)</h1>
+  <p>Paramètres d'adresse : <code>?seeds=1,2,3&amp;days=3000</code></p>
+  <pre id="out">Calcul…</pre>
+  <script type="module">
+    import { simulate } from './bot.js';
+    const q = new URLSearchParams(location.search);
+    const seeds = (q.get('seeds') || '12345,42,777').split(',').map(Number);
+    const days = Number(q.get('days') || 3000);
+    const out = document.getElementById('out');
+    out.textContent = '';
+    const results = [];
+    let done = '';
+    for (const seed of seeds) {
+      const r = await simulate(seed, days, 200, (lines) => {
+        out.innerHTML = `${done}<b>Carte ${seed}</b> (en cours)\n${lines.join('\n')}`;
+      });
+      results.push({ seed, ...r });
+      done += `<b>Carte ${seed}</b>\n${r.lines.join('\n')}\n\n`;
+      out.innerHTML = done;
+    }
+    const won = results.filter((r) => r.won);
+    out.innerHTML += `<b class="${won.length === results.length ? 'ok' : 'ko'}">Victoires : ${won.length}/${results.length}`
+      + (won.length ? ` · jour moyen ${Math.round(won.reduce((n, r) => n + r.day, 0) / won.length)}` : '') + '</b>';
+    window.simulationResults = results;
+  </script>
+</body>
+</html>

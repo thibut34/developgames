@@ -3,8 +3,11 @@
 Jeu de développement de village/cité dans le navigateur. Projet indépendant de StatsFoot (aucun lien).
 
 - JavaScript pur (modules ES) + Canvas, sans dépendance ni build. Node.js n'est pas installé : ne pas en introduire.
-- Lancer en local : `python -m http.server 8000` puis http://localhost:8000.
+- Lancer en local : `python serve.py` (sans cache) puis http://localhost:8000.
 - Équilibrage (coûts, production, consommation) : tout dans `js/config.js`.
+- Après un changement d'équilibrage ou du moteur (`js/game.js`), lancer `tests/simulation.html` :
+  le joueur robot doit toujours atteindre la victoire sans erreur.
+- Console du jeu : `DG.give('gold', 500)`, `DG.days(30)` pour tester vite.
 - Doit rester jouable sur mobile (tactile, petits écrans) : un portage mobile est prévu plus tard.
 - Textes du jeu et messages de commit en français.
 
