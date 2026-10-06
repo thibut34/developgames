@@ -12,6 +12,11 @@ import { createMinimap } from './minimap.js';
 import { icon } from './icons.js';
 import * as fx from './fx.js';
 import * as audio from './audio.js';
+import { computeMods } from './game.js';
+import { findScenario, DIFFICULTIES } from './scenarios.js';
+import { createTitle, markMission } from './title.js';
+import { createBot } from './autobuild.js';
+import { ISLAND_KINDS } from './world.js';
 
 const AUTOSAVE_EVERY = 10;
 const SETTINGS_KEY = 'developgames-settings-v3';
@@ -30,6 +35,7 @@ const ui = {
   sound: settings.sound, icons: settings.icons, minimap: settings.minimap, keepTool: settings.keepTool,
 };
 let g = load();
+let hasAutosave = !!g;
 if (!g) g = createGame();
 let modalPaused = false;
 let shiftDown = false;
@@ -175,6 +181,8 @@ const actions = {
   buy(k, n) { const r = buy(g, k, Number(n)); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },
   sell(k, n) { const r = sell(g, k, Number(n)); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },
   help() { showHelp(); },
+  saveSlot(i) { saveToSlot(Number(i)); },
+  toMenu() { save(g); hasAutosave = true; view.closePanel(); title.show(); },
   exportSave() {
     const blob = new Blob([serialize(g)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -184,12 +192,7 @@ const actions = {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
   importSave() { document.getElementById('import-file').click(); },
-  newGame() {
-    view.showModal(`<div class="m-ic">${icon('rotate-ccw')}</div><h2>Nouvelle partie ?</h2><p class="center">La partie en cours sera perdue. Pensez à l'exporter si vous voulez la garder.</p>`, [
-      { label: 'Annuler' },
-      { label: 'Nouvelle île', cls: 'primary', onClick: () => { clearSave(); startGame(createGame()); } },
-    ]);
-  },
+  newGame() { save(g); hasAutosave = true; view.closePanel(); title.show('new'); },
   setOption(opt, value) {
     settings[opt] = value;
     ui[opt] = value;
@@ -314,6 +317,23 @@ function drainEvents() {
         ${unlocks.length ? `<p class="center muted">Nouveaux bâtiments</p><div class="unlocks">${unlocks.map(([, d]) => `<span>${d.name}</span>`).join('')}</div>` : ''}`,
       [{ label: 'Continuer', cls: 'primary' }]);
       view.renderItems();
+    } else if (p.type === 'scenarioWin') {
+      sound('victory');
+      markMission(p.id, p.days);
+      const sc = findScenario(p.id);
+      const next = SCENARIO_ORDER[SCENARIO_ORDER.indexOf(p.id) + 1];
+      view.showModal(`<div class="m-ic">${icon('trophy')}</div><h2>Mission accomplie</h2>
+        <p class="center">« ${sc.name} » réussie en ${p.days} jours.</p>`, [
+        { label: 'Continuer à jouer' },
+        { label: 'Menu', onClick: () => actions.toMenu() },
+        ...(next ? [{ label: 'Mission suivante', cls: 'primary', onClick: () => startScenario(next) }] : []),
+      ]);
+    } else if (p.type === 'scenarioLose') {
+      sound('bad');
+      view.showModal(`<div class="m-ic">${icon('hourglass')}</div><h2>Mission échouée</h2><p class="center">${p.reason}</p>`, [
+        { label: 'Menu', onClick: () => actions.toMenu() },
+        { label: 'Réessayer', cls: 'primary', onClick: () => startScenario(p.id) },
+      ]);
     } else if (p.type === 'victory') {
       sound('victory');
       view.showModal(`<div class="m-ic">${icon('castle')}</div><h2>Victoire</h2>
@@ -342,6 +362,9 @@ const HELP = [
   ['factory', 'Chaînes de production', `${step_('wheat', 'Blé → moulin → farine → boulangerie → pain. Laine → tisserand → tissu. Minerai + charbon → fonderie → fer → forge → outils.')}
     ${step_('factory', 'Le panneau <b>Marchandises</b> montre ce qui est produit et consommé chaque jour : surveillez les déficits.')}
     ${step_('landmark', 'Chaque bâtiment coûte un entretien en or. Les impôts doivent couvrir les dépenses.')}`],
+  ['flask-conical', 'Recherche et colonies', `${step_('flask-conical', 'Les <b>bibliothèques</b> puis les <b>universités</b> produisent des points de recherche. Dépensez-les dans le panneau Recherche : meilleurs rendements, médecin, poste de garde, navigation…')}
+    ${step_('ship', 'Avec la Navigation, construisez un <b>port</b> sur l\'île principale, puis un port sur une île voisine pour y fonder une <b>colonie</b>. Les routes de la colonie partent de son port.')}
+    ${step_('gem', 'Les nobles exigent des épices et des bijoux : on ne les trouve que sur l\'île aux épices et l\'île aux filons.')}`],
   ['flame', 'Saisons et incendies', `${step_('snowflake', 'Presque rien ne pousse en hiver : faites des réserves de nourriture à l\'automne.')}
     ${step_('flame', 'Le feu peut prendre et se propager aux voisins. Un <b>poste d\'incendie</b> empêche les départs de feu dans sa zone et éteint vite les incendies ; un puits permet une chaîne de seaux.')}
     ${step_('layers', 'Les <b>calques</b> (bouton à droite) montrent l\'eau, les marchés, la protection incendie, la beauté et la satisfaction.')}`],
@@ -353,8 +376,99 @@ function showHelp(i = 0) {
     : [{ label: 'C\'est parti', cls: 'primary', onClick: () => { settings.seenHelp = true; saveSettings(); } }]);
 }
 
+// ---------- Écran titre, sauvegardes et missions ----------
+const SLOT_KEY = (i) => `developgames-slot-${i}`;
+const SCENARIO_ORDER = ['colons', 'hiver', 'incendie', 'pain', 'savoir', 'horizons', 'joyau', 'cathedrale'];
+
+function gameName(game) {
+  return game.scenario ? `Mission : ${findScenario(game.scenario).name}` : `Partie libre (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`;
+}
+
+function saveToSlot(i) {
+  const meta = { date: Date.now(), day: g.day, era: g.era, pop: Math.floor(population(g)), name: gameName(g) };
+  try {
+    localStorage.setItem(SLOT_KEY(i), JSON.stringify({ meta, data: serialize(g) }));
+    view.toast(`Partie sauvegardée dans l'emplacement ${i}.`, 'good');
+    sound('coin');
+  } catch {
+    view.toast('Impossible de sauvegarder (stockage du navigateur plein ?).', 'error');
+  }
+}
+
+function slotList() {
+  const list = [];
+  try {
+    const auto = load();
+    list.push({ key: 'auto', label: 'Sauvegarde automatique', meta: auto ? { date: Date.now(), day: auto.day, era: auto.era, pop: Math.floor(population(auto)), name: gameName(auto) } : null });
+  } catch { list.push({ key: 'auto', label: 'Sauvegarde automatique', meta: null }); }
+  for (const i of [1, 2, 3]) {
+    let meta = null;
+    try { meta = JSON.parse(localStorage.getItem(SLOT_KEY(i)))?.meta || null; } catch { /* vide */ }
+    list.push({ key: String(i), label: `Emplacement ${i}`, meta });
+  }
+  return list;
+}
+
+function loadFrom(key) {
+  let ng = null;
+  try {
+    ng = key === 'auto' ? load() : deserialize(JSON.parse(localStorage.getItem(SLOT_KEY(key))).data);
+  } catch { ng = null; }
+  if (!ng) { view.toast('Cette sauvegarde est illisible.', 'error'); return; }
+  startGame(ng);
+}
+
+// Prépare une mission : carte, ville de départ construite par le joueur automatique, réglages.
+async function startScenario(id) {
+  const sc = findScenario(id);
+  let ng = createGame(sc.seed, { difficulty: sc.difficulty });
+  if (sc.prebuild) {
+    title.progress(`Préparation de la mission « ${sc.name} »…`);
+    const bot = createBot(sc.seed, { game: ng, ...sc.prebuild });
+    for (let d = 0; d < sc.prebuild.days; d++) {
+      bot.day();
+      if (d % 15 === 0) { title.setProgress(d / sc.prebuild.days); await new Promise((r) => setTimeout(r, 0)); }
+    }
+    ng.notes.length = 0;
+    ng.pending.length = 0;
+  }
+  ng.scenario = id;
+  ng.scenarioStart = ng.day;
+  ng.scenarioEnded = null;
+  ng.log = [];
+  ng.stats = { built: 0, fires: 0, maxPop: 0 };
+  const api = {
+    refresh() { computeMods(ng); rebuild(ng); },
+    igniteHouses(n) {
+      const houses = ng.buildings.filter((b) => b.type === 'house').sort(() => Math.random() - 0.5).slice(0, n);
+      for (const b of houses) b.fire = 1;
+    },
+  };
+  computeMods(ng);
+  sc.after?.(ng, api);
+  rebuild(ng);
+  startGame(ng);
+  view.showModal(`<div class="m-ic">${icon(sc.icon)}</div><h2>${sc.name}</h2><p class="center">${sc.intro}</p>
+    <ul class="parts">${sc.goals.map((q) => `<li><span>${q.text}</span></li>`).join('')}</ul>
+    <p class="center muted small">${sc.days ? `Temps imparti : ${sc.days} jours.` : 'Pas de limite de temps.'} Difficulté : ${DIFFICULTIES[sc.difficulty].name.toLowerCase()}.</p>`,
+  [{ label: 'Commencer', cls: 'primary' }]);
+}
+
+const title = createTitle({
+  hasSave: () => hasAutosave,
+  onContinue: () => { const ng = load(); if (ng) startGame(ng); else title.show('new'); },
+  onNew: (difficulty, seed) => startGame(createGame(seed, { difficulty })),
+  onScenario: (id) => startScenario(id),
+  slots: slotList,
+  onLoad: loadFrom,
+  onHelp: () => showHelp(),
+});
+void ISLAND_KINDS; void clearSave;
+
 // ---------- Boucle ----------
 function startGame(ng) {
+  title.hide();
+  hasAutosave = true;
   g = ng;
   ui.selected = null;
   ui.tool = 'inspect';
@@ -375,7 +489,8 @@ let last = performance.now(), acc = 0;
 function frame(now) {
   const dt = Math.min(now - last, 100) / 1000;
   last = now;
-  const speed = modalPaused ? 0 : ui.speed;
+  const speed = modalPaused || title.open ? 0 : ui.speed;
+  if (title.open) { cam.x += dt * 12; if (cam.x > 4000) cam.x = 300; }
   acc += dt * 1000 * speed;
   let ticked = false;
   while (acc >= DAY_MS) {
@@ -409,7 +524,7 @@ view.renderCats();
 view.renderItems();
 centerOnTownhall();
 afterChange();
-if (!settings.seenHelp) showHelp();
+title.show();
 requestAnimationFrame(frame);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

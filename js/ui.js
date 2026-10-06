@@ -6,8 +6,9 @@ import {
 import {
   storage, canAfford, amount, eraLocked, def, isWorking, houseNeeds, upgradeStatus, eraStatus,
   questProgress, buyPrice, sellPrice, tradeHasPost, dateText, season, capOf, isHouse, population,
-  lockReason, techStatus,
+  lockReason, techStatus, scenarioGoals,
 } from './game.js';
+import { DIFFICULTIES } from './scenarios.js';
 import { icon } from './icons.js';
 import { thumb } from './thumbs.js';
 
@@ -91,8 +92,15 @@ export function createUI(app) {
   }
 
   function refreshQuest() {
-    const p = questProgress(app.g);
     const box = $('#quest');
+    const s = scenarioGoals(app.g);
+    if (s) {
+      box.innerHTML = `<div class="q-title">${icon(s.sc.icon)}<span>${esc(s.sc.name)}</span></div>
+        <ul class="goals">${s.goals.map((q) => `<li class="${q.done ? 'done' : ''}">${icon(q.done ? 'check' : 'target')}<span>${esc(q.text)}</span><b>${fmt(q.cur)}/${fmt(q.max)}</b></li>`).join('')}</ul>
+        ${s.left !== null ? `<div class="q-sub"><span>${icon('hourglass')} ${Math.max(0, s.left)} jours restants</span></div>` : ''}`;
+      return;
+    }
+    const p = questProgress(app.g);
     if (!p) { box.innerHTML = `<div class="q-title">${icon('crown')}Tous les objectifs sont remplis</div>`; return; }
     box.innerHTML = `<div class="q-title">${icon('target')}<span>${esc(p.q.text)}</span></div>
       ${bar(p.cur / p.max, 'thin')}
@@ -263,7 +271,7 @@ export function createUI(app) {
       }
       if (b.build) {
         const total = d.buildDays;
-        html += `<div class="alert">${icon('construction')}<div><b>Chantier en cours</b> — encore ${b.build} jours.</div></div>${bar(1 - b.build / total)}`;
+        html += `<div class="alert ${b.stalled ? 'warn' : ''}">${icon('construction')}<div><b>${b.stalled ? 'Chantier arrêté' : 'Chantier en cours'}</b> — encore ${b.build} jours.${d.buildUse ? `<br>Consomme chaque jour : ${costHtml(g, d.buildUse)}` : ''}</div></div>${bar(1 - b.build / total)}`;
       }
       if (!b.build && (d.workers || isHouse(b)) && !b.connected) html += `<div class="alert warn">${icon('unlink')}<div>Pas relié à l'hôtel de ville par une route.</div></div>`;
 
@@ -452,13 +460,16 @@ export function createUI(app) {
         ${opt('icons', 'Alertes au-dessus des bâtiments')}
         ${opt('minimap', 'Mini-carte')}
         ${opt('keepTool', 'Garder l\'outil après une construction')}
+        <h3>Sauvegarder</h3>
+        <div class="seg">${[1, 2, 3].map((i) => `<button data-act="saveSlot:${i}">${icon('save')}Emplacement ${i}</button>`).join('')}</div>
         <div class="btns col">
           <button data-act="help">${icon('circle-help')}Comment jouer</button>
+          <button data-act="toMenu">${icon('menu')}Menu principal</button>
           <button data-act="exportSave">${icon('download')}Exporter la sauvegarde</button>
           <button data-act="importSave">${icon('upload')}Importer une sauvegarde</button>
           <button class="danger" data-act="newGame">${icon('rotate-ccw')}Nouvelle partie</button>
         </div>
-        <p class="muted small">Carte n° ${g.seed}. Sauvegarde automatique dans ce navigateur.</p>`;
+        <p class="muted small">Carte n° ${g.seed} · difficulté ${DIFFICULTIES[g.difficulty ?? 1].name.toLowerCase()}. Sauvegarde automatique dans ce navigateur.</p>`;
     },
   };
 

@@ -54,6 +54,8 @@ function box(ctx, x0, y0, x1, y1, h, wall, roof, type = 'hip', rh = 8, base = 0)
     poly(ctx, [Nu, Eu, apex], shade(roof, 0.86), EDGE);
     poly(ctx, [Wu, Su, apex], shade(roof, 1), EDGE);
     poly(ctx, [Su, Eu, apex], shade(roof, 0.74), EDGE);
+    roofLines(ctx, Wu, Su, apex, apex);
+    roofLines(ctx, Su, Eu, apex, apex);
     top = apex[1];
   } else if (type === 'gable') {
     const A = up(mid(Nu, Wu), rh), B = up(mid(Eu, Su), rh);
@@ -61,6 +63,10 @@ function box(ctx, x0, y0, x1, y1, h, wall, roof, type = 'hip', rh = 8, base = 0)
     poly(ctx, [Wu, Nu, A], shade(wall, 0.92), EDGE);
     poly(ctx, [Su, Eu, B], shade(wall, 0.74), EDGE);
     poly(ctx, [Wu, Su, B, A], shade(roof, 1.02), EDGE);
+    roofLines(ctx, Wu, Su, B, A);
+    ctx.strokeStyle = shade(roof, 1.25);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
     top = Math.min(A[1], B[1]);
   } else if (type === 'dome') {
     const c = mid(Nu, Su);
@@ -75,6 +81,39 @@ function box(ctx, x0, y0, x1, y1, h, wall, roof, type = 'hip', rh = 8, base = 0)
   return { N, E, S, W, h, base, top };
 }
 
+// Rangées de tuiles : lignes parallèles au bas du pan de toit (a→b), jusqu'au faîte (d→c).
+function roofLines(ctx, a, b, c, d) {
+  const n = Math.max(3, Math.round(Math.hypot(d[0] - a[0], d[1] - a[1]) / 4));
+  ctx.strokeStyle = 'rgba(0,0,0,0.13)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    const p = lerp(a, d, t), q = lerp(b, c, t);
+    ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+  }
+  ctx.stroke();
+}
+
+// Trait sur une face (colombages, bandeaux…), coordonnées relatives (u le long, v en hauteur).
+function faceLine(ctx, bx, face, u0, v0, u1, v1, color, width = 1.4) {
+  const [a, b] = face === 'L' ? [bx.W, bx.S] : [bx.S, bx.E];
+  const p = (u, v) => up(lerp(a, b, u), v * bx.h);
+  const s = p(u0, v0), e = p(u1, v1);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
+}
+
+function timber(ctx, bx, color = '#5a3b22') {
+  for (const f of ['L', 'R']) {
+    for (const u of [0.03, 0.5, 0.97]) faceLine(ctx, bx, f, u, 0, u, 1, color);
+    faceLine(ctx, bx, f, 0, 0.55, 1, 0.55, color);
+    faceLine(ctx, bx, f, 0.03, 0.55, 0.5, 1, color, 1);
+    faceLine(ctx, bx, f, 0.97, 0.55, 0.5, 1, color, 1);
+  }
+}
+
 // Rectangle (fenêtre, porte) sur la face gauche (W→S) ou droite (S→E) d'un bloc.
 function onFace(ctx, bx, face, u0, u1, v0, v1, color) {
   const [a, b] = face === 'L' ? [bx.W, bx.S] : [bx.S, bx.E];
@@ -82,13 +121,20 @@ function onFace(ctx, bx, face, u0, u1, v0, v1, color) {
   poly(ctx, [p(u0, v0), p(u1, v0), p(u1, v1), p(u0, v1)], color);
 }
 
-function windows(ctx, bx, rows, cols, color = '#3d4a5c') {
+function windows(ctx, bx, rows, cols, color = '#3d4a5c', shutters = null) {
   for (let r = 0; r < rows; r++) {
     const v0 = 0.25 + (r * 0.65) / rows, v1 = v0 + 0.35 / rows;
     for (const face of ['L', 'R']) {
       for (let c = 0; c < cols; c++) {
         const u0 = 0.15 + (c * 0.75) / cols, u1 = u0 + 0.35 / cols;
+        const du = (u1 - u0) * 0.14, dv = (v1 - v0) * 0.14;
+        onFace(ctx, bx, face, u0 - du, u1 + du, v0 - dv, v1 + dv, 'rgba(255,250,235,0.75)');
         onFace(ctx, bx, face, u0, u1, v0, v1, color);
+        onFace(ctx, bx, face, (u0 + u1) / 2 - du * 0.3, (u0 + u1) / 2 + du * 0.3, v0, v1, 'rgba(255,250,235,0.55)');
+        if (shutters) {
+          onFace(ctx, bx, face, u0 - du * 4, u0 - du, v0, v1, shutters);
+          onFace(ctx, bx, face, u1 + du, u1 + du * 4, v0, v1, shutters);
+        }
       }
     }
   }
@@ -154,6 +200,8 @@ export function drawScaffold(ctx, b, top, progress) {
 }
 
 // Dessine un bâtiment. Renvoie { top: y du point le plus haut, smoke: point de fumée ou null }.
+const FLAT = ['farm', 'sheep', 'vineyard', 'spicefarm', 'garden', 'park', 'market', 'ruins', 'well', 'fountain', 'statue', 'port', 'wonder'];
+
 export function drawBuilding(ctx, b, env) {
   const d = BUILDINGS[b.type];
   const { x, y } = b;
@@ -161,6 +209,10 @@ export function drawBuilding(ctx, b, env) {
   const season = env.season;
   let smoke = null;
   let top;
+  if (!FLAT.includes(d.look)) {
+    // Ombre douce au sol, portée vers la droite
+    poly(ctx, [P(x + 0.2, y + 0.15), P(x + s + 0.25, y + 0.15), P(x + s + 0.25, y + s - 0.05), P(x + 0.2, y + s - 0.05)], 'rgba(20,30,15,0.16)');
+  }
 
   switch (d.look) {
     case 'house': {
@@ -169,10 +221,17 @@ export function drawBuilding(ctx, b, env) {
       const empty = (b.res ?? 1) < 0.5;
       const bx = box(ctx, x + L.inset, y + L.inset, x + 1 - L.inset, y + 1 - L.inset, L.h, L.wall, L.roof, L.type, L.rh);
       const lit = env.season === 3 && !empty ? '#e8c46a' : '#3d4a5c';
+      if (lv <= 2) timber(ctx, bx, lv === 1 ? '#6b4a2c' : '#5a3b22');
       if (lv === 1) {
-        onFace(ctx, bx, 'R', 0.3, 0.55, 0.35, 0.7, lit);
+        onFace(ctx, bx, 'R', 0.3, 0.55, 0.32, 0.5, lit);
       } else {
-        windows(ctx, bx, lv === 2 ? 1 : 2, lv === 2 ? 1 : 2, lit);
+        windows(ctx, bx, lv === 2 ? 1 : 2, lv === 2 ? 1 : 2, lit, lv === 2 ? '#3f6f4a' : lv === 3 ? '#3f5f8f' : null);
+      }
+      if (lv >= 3 && env.season !== 3) {
+        // Jardinières fleuries sous les fenêtres du bas
+        const fl = ['#e2575a', '#f4c542', '#d97ad6'][(b.x + b.y) % 3];
+        onFace(ctx, bx, 'R', 0.12, 0.88, 0.2, 0.25, '#6b4a2c');
+        for (let i = 0; i < 6; i++) onFace(ctx, bx, 'R', 0.14 + i * 0.13, 0.2 + i * 0.13, 0.25, 0.29, i % 2 ? fl : '#4f8a34');
       }
       door(ctx, bx, lv === 1 ? 0.4 : 0.6);
       if (lv === 4) onFace(ctx, bx, 'R', 0, 1, 0.48, 0.53, '#c9a23a');
@@ -314,6 +373,91 @@ export function drawBuilding(ctx, b, env) {
       onFace(ctx, bx, 'L', 0.35, 0.65, 0, 0.6, '#5a2a30');
       windows(ctx, bx, 1, 1);
       top = bx.top;
+      break;
+    }
+    case 'port': {
+      // Ponton en bois, entrepôt, grue et caisses
+      ground(ctx, x + 0.02, y + 0.02, x + s - 0.02, y + s - 0.02, '#9a7650', 'rgba(60,40,20,0.45)');
+      ctx.strokeStyle = 'rgba(60,40,20,0.35)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 8; i++) {
+        const a = P(x + 0.02, y + (i * s) / 8), c = P(x + s - 0.02, y + (i * s) / 8);
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(c[0], c[1]); ctx.stroke();
+      }
+      const bx = box(ctx, x + 0.12, y + 0.12, x + 1.1, y + 1.0, d.h, d.wall, d.roof, 'gable', 10);
+      onFace(ctx, bx, 'R', 0.3, 0.7, 0, 0.6, '#4a3020');
+      for (const [i, j] of [[1.3, 1.25], [1.55, 1.5], [1.25, 1.6]]) box(ctx, x + i, y + j, x + i + 0.22, y + j + 0.22, 6, '#b08455', '#c99a62', 'flat');
+      const base = P(x + 1.55, y + 0.4);
+      ctx.strokeStyle = '#4a3020';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(base[0], base[1]); ctx.lineTo(base[0], base[1] - 34); ctx.lineTo(base[0] + 18, base[1] - 30); ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(base[0] + 16, base[1] - 30); ctx.lineTo(base[0] + 16, base[1] - 14); ctx.stroke();
+      top = Math.min(bx.top, base[1] - 34);
+      break;
+    }
+    case 'spicefarm': {
+      ground(ctx, x + 0.05, y + 0.05, x + s - 0.05, y + s - 0.05, season === 3 ? '#b49a80' : '#8a5a34', 'rgba(60,40,20,0.3)');
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 6; j++) {
+          if (i < 3 && j < 3) continue;
+          const p = P(x + 0.18 + i * 0.3, y + 0.18 + j * 0.3);
+          ctx.fillStyle = '#3f7a2e';
+          ctx.beginPath(); ctx.arc(p[0], p[1] - 4, 3.4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = (i + j) % 2 ? '#d9622b' : '#e9a23a';
+          ctx.beginPath(); ctx.arc(p[0] + 1.5, p[1] - 5, 1.4, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      const bx = box(ctx, x + 0.1, y + 0.1, x + 0.85, y + 0.85, d.h, d.wall, d.roof, 'hip', 11);
+      door(ctx, bx, 0.4);
+      top = bx.top;
+      break;
+    }
+    case 'jeweler': {
+      const bx = box(ctx, x + 0.15, y + 0.15, x + 0.85, y + 0.85, d.h, d.wall, d.roof, 'hip', 10);
+      windows(ctx, bx, 1, 2, '#f2d27a');
+      door(ctx, bx, 0.6, '#2f5c6b');
+      onFace(ctx, bx, 'L', 0.15, 0.85, 0.86, 0.95, '#c9a23a');
+      top = bx.top;
+      break;
+    }
+    case 'library': {
+      const bx = box(ctx, x + 0.12, y + 0.15, x + 0.88, y + 0.85, d.h, d.wall, d.roof, 'hip', 10);
+      for (let i = 0; i < 4; i++) onFace(ctx, bx, 'L', 0.12 + i * 0.22, 0.17 + i * 0.22, 0, 0.85, '#f4ecd8');
+      onFace(ctx, bx, 'R', 0.2, 0.8, 0.35, 0.7, '#3d4a5c');
+      top = bx.top;
+      break;
+    }
+    case 'university': {
+      const bx = box(ctx, x + 0.1, y + 0.1, x + s - 0.1, y + s - 0.1, d.h, d.wall, d.roof, 'hip', 14);
+      windows(ctx, bx, 2, 4, '#3d4a5c');
+      for (let i = 0; i < 6; i++) onFace(ctx, bx, 'L', 0.08 + i * 0.16, 0.12 + i * 0.16, 0, 0.9, '#fbf6ea');
+      const tw = box(ctx, x + 0.8, y + 0.8, x + 1.2, y + 1.2, 14, d.wall, '#c9a23a', 'dome', 12, d.h + 2);
+      top = tw.top;
+      break;
+    }
+    case 'doctor': {
+      const bx = box(ctx, x + 0.15, y + 0.15, x + 0.85, y + 0.85, d.h, d.wall, d.roof, 'gable', 10);
+      windows(ctx, bx, 1, 1);
+      door(ctx, bx, 0.6);
+      onFace(ctx, bx, 'L', 0.18, 0.42, 0.62, 0.72, '#2f8a5a');
+      onFace(ctx, bx, 'L', 0.26, 0.34, 0.5, 0.84, '#2f8a5a');
+      top = bx.top;
+      break;
+    }
+    case 'hospital': {
+      const bx = box(ctx, x + 0.1, y + 0.15, x + s - 0.1, y + s - 0.2, d.h, d.wall, d.roof, 'gable', 14);
+      windows(ctx, bx, 2, 4, '#4a6a8a');
+      onFace(ctx, bx, 'L', 0.44, 0.56, 0.58, 0.68, '#c0392b');
+      onFace(ctx, bx, 'L', 0.48, 0.52, 0.5, 0.76, '#c0392b');
+      top = flag(ctx, [P(x + 1, y + 1)[0], bx.top], 12, '#ffffff');
+      break;
+    }
+    case 'guardpost': {
+      const bx = box(ctx, x + 0.2, y + 0.2, x + 0.8, y + 0.8, d.h, d.wall, '#8a8070', 'flat');
+      for (const [i, j] of [[0.2, 0.2], [0.68, 0.2], [0.2, 0.68], [0.68, 0.68]]) box(ctx, x + i, y + j, x + i + 0.12, y + j + 0.12, 4, d.wall, '#8a8070', 'flat', 0, d.h);
+      door(ctx, bx, 0.4, '#3a2a1a');
+      top = flag(ctx, [P(x + 0.5, y + 0.5)[0], bx.top - 4], 12, '#3d4a6a');
       break;
     }
     case 'ruins': {

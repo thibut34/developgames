@@ -494,6 +494,72 @@ label.toggle input { width: 17px; height: 17px; accent-color: var(--accent); }
 .help-step { display: flex; gap: 10px; margin: 10px 0; }
 .help-step .ic { color: var(--accent); margin-top: 2px; }
 
+/* ---------- Écran titre ---------- */
+body.on-title #topbar, body.on-title #quest, body.on-title #sidebtns, body.on-title #toolbar,
+body.on-title #minimap, body.on-title #panel, body.on-title #toolchip, body.on-title #overlay-menu { display: none !important; }
+#title {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(10, 18, 13, 0.35), rgba(10, 18, 13, 0.85));
+  overflow-y: auto;
+}
+.t-box { width: min(560px, 100%); }
+.t-logo { text-align: center; margin-bottom: 22px; }
+.t-mark { width: 64px; height: 64px; margin: 0 auto 12px; background: url(icon.svg) center / contain no-repeat; filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5)); }
+.t-logo h1 { margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -0.02em; text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6); }
+.t-logo p { margin: 6px 0 0; color: #d6d2c6; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7); }
+.t-content {
+  padding: 18px;
+  background: var(--bar);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.t-content h2 { margin: 4px 0 12px; font-size: 19px; }
+.t-menu { display: flex; flex-direction: column; gap: 8px; }
+.t-menu button, button.wide {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+.t-menu button:hover { background: var(--panel-3); }
+.t-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 2px; border: 0; background: none; color: var(--muted); }
+.t-back .ic { transform: rotate(180deg); }
+.t-diffs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.t-diff { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); text-align: left; }
+.t-diff span { color: var(--muted); font-size: 12px; }
+.t-diff.active { border-color: var(--accent); background: rgba(233, 196, 106, 0.1); }
+.t-seed { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 14px; color: var(--muted); }
+.t-seed input { width: 160px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); font: inherit; }
+.t-missions, .t-slots { display: flex; flex-direction: column; gap: 6px; max-height: 56vh; overflow-y: auto; }
+.t-mission, .t-slot { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); text-align: left; }
+.t-mission:hover, .t-slot:hover:not(:disabled) { background: var(--panel-3); }
+.t-num { display: grid; place-items: center; flex: 0 0 26px; height: 26px; border-radius: 50%; background: var(--panel-3); font-weight: 700; font-size: 12px; }
+.t-mission.done .t-num { background: var(--good); color: #10200f; }
+.t-mi { color: var(--accent); }
+.t-mi .ic { width: 22px; height: 22px; }
+.t-mt { display: flex; flex-direction: column; gap: 2px; }
+.t-mt > span { color: var(--muted); font-size: 12px; }
+.t-mt em, .t-slot em { font-style: normal; font-size: 11px; color: var(--accent); }
+.t-slot { flex-direction: column; align-items: flex-start; gap: 3px; }
+.t-slot span { color: var(--muted); font-size: 12px; }
+.t-progress { text-align: center; padding: 10px 6px; }
+#quest .goals { list-style: none; padding: 0; margin: 6px 0 0; font-size: 12px; }
+#quest .goals li { display: flex; align-items: center; gap: 6px; padding: 2px 0; color: var(--muted); }
+#quest .goals li.done { color: var(--good); }
+#quest .goals li b { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+#quest .goals .ic { width: 13px; height: 13px; }
+
 /* ---------- Écrans moyens ---------- */
 @media (max-width: 1300px) {
   .tb-item .cap, .cls .lbl, .date-text { display: none; }
@@ -519,6 +585,8 @@ label.toggle input { width: 17px; height: 17px; accent-color: var(--accent); }
     max-height: 58vh;
   }
   .cat-name { display: none; }
+  .t-diffs { grid-template-columns: 1fr; }
+  .t-logo h1 { font-size: 30px; }
   .cat { padding: 6px 14px; }
   .cat .ic { width: 18px; height: 18px; }
   .item { width: 84px; }

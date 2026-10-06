@@ -68,8 +68,8 @@ export function tree(variant, season) {
   return c;
 }
 
-export function mountain(variant, season) {
-  const key = `m${variant}-${season}`;
+export function mountain(variant, season, gold = false) {
+  const key = `m${variant}-${season}-${gold}`;
   if (cache.has(key)) return cache.get(key);
   const w = TW, h = 74;
   const c = make(w, h, (ctx) => {
@@ -88,6 +88,16 @@ export function mountain(variant, season) {
     ctx.lineTo(peak[0] + (2 - peak[0]) * cap, peak[1] + (base - peak[1]) * cap);
     ctx.closePath();
     ctx.fill();
+    if (gold) {
+      // Filons d'or : veines dorées sur le flanc
+      ctx.strokeStyle = '#f0c64a';
+      ctx.lineWidth = 2;
+      for (const [x0, y0, x1, y1] of [[w * 0.3, base - 14, w * 0.45, base - 26], [w * 0.55, base - 10, w * 0.62, base - 24], [w * 0.4, base - 6, w * 0.5, base - 12]]) {
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
+      ctx.fillStyle = '#ffe58a';
+      for (const [x, y] of [[w * 0.45, base - 26], [w * 0.62, base - 24]]) { ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill(); }
+    }
   });
   cache.set(key, c);
   return c;

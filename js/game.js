@@ -3,9 +3,10 @@ import {
   MAP, T, TERRAIN, CLEAR, GOODS, GOOD_KEYS, START, BASE_STORAGE, STORAGE_PER_ERA, WORKFORCE, ROAD_COST,
   CLASSES, TAXES, ERAS, BUILDINGS, WORK_PRIORITY, QUESTS, DAYS_PER_SEASON, SEASONS, FIRE, TECHS,
 } from './config.js';
-import { generateMap } from './world.js';
+import { generateMap, computeIslands } from './world.js';
+import { DIFFICULTIES, findScenario } from './scenarios.js';
 
-const SAVE_KEY = 'developgames-save-v3';
+const SAVE_KEY = 'developgames-save-v4';
 
 export const def = (b) => BUILDINGS[b.type];
 const idx = (x, y) => y * MAP + x;
@@ -14,8 +15,11 @@ export const resName = (k) => (k === 'gold' ? 'or' : GOODS[k].name.toLowerCase()
 
 // ---------- Création ----------
 
-export function createGame(seed = Math.floor(Math.random() * 1e9)) {
-  const goods = Object.fromEntries(GOOD_KEYS.map((k) => [k, START.goods[k] || 0]));
+// opts : { difficulty: 0-2, scenario: id de mission }
+export function createGame(seed = Math.floor(Math.random() * 1e9), opts = {}) {
+  const difficulty = opts.difficulty ?? 1;
+  const D = DIFFICULTIES[difficulty];
+  const goods = Object.fromEntries(GOOD_KEYS.map((k) => [k, Math.round((START.goods[k] || 0) * D.start)]));
   const g = {
     seed,
     tiles: generateMap(seed),
@@ -23,7 +27,9 @@ export function createGame(seed = Math.floor(Math.random() * 1e9)) {
     roads: new Uint8Array(MAP * MAP),
     buildings: [],
     goods,
-    gold: START.gold,
+    gold: Math.round(START.gold * D.start),
+    difficulty,
+    scenario: opts.scenario || null,
     day: 0,
     era: 0,
     tax: 1,
@@ -55,6 +61,7 @@ function init(g) {
   g.notes = [];      // messages à afficher (vidés par l'interface)
   g.pending = [];    // fenêtres à ouvrir (caravane, ère, victoire)
   g.terrainVersion = (g.terrainVersion || 0) + 1;
+  g.isl = computeIslands(g.tiles, g.seed);
   g.supply = CLASSES.map(() => ({}));
   g.flow = { prod: {}, use: {} };
   g.fin = { taxes: 0, upkeep: 0, other: 0 };
@@ -71,6 +78,9 @@ export const dayOfSeason = (g) => (g.day % DAYS_PER_SEASON) + 1;
 export const dateText = (g) => `${SEASONS[season(g)].name}, jour ${dayOfSeason(g)}, an ${year(g)}`;
 
 export function tileAt(g, x, y) { return inMap(x, y) ? g.tiles[idx(x, y)] : null; }
+export const islandAt = (g, x, y) => (inMap(x, y) ? g.isl.id[idx(x, y)] : -1);
+export const islandOf = (g, b) => islandAt(g, b.x, b.y);
+const isHomePort = (g, b) => b.type === 'port' && islandOf(g, b) === 0;
 export function roadAt(g, x, y) { return inMap(x, y) && g.roads[idx(x, y)] === 1; }
 export function buildingAt(g, x, y) {
   if (!inMap(x, y)) return null;
@@ -160,12 +170,27 @@ function countClasses(g) {
   for (const b of g.buildings) if (isHouse(b)) g.cls[b.level - 1] += b.res || 0;
 }
 
+// Les routes partent de l'hôtel de ville, et des ports des colonies quand un port de l'île
+// principale est relié (les bateaux font la liaison).
 function computeConnectivity(g) {
-  const conn = new Uint8Array(MAP * MAP);
   const th = g.buildings.find((b) => b.type === 'townhall');
+  spreadRoads(g, [th]);
+  const link = g.buildings.some((b) => isHomePort(g, b) && b.connected && !b.paused && !(b.fire > 0) && !b.build);
+  g.seaLink = link;
+  if (!link) return;
+  const colonyPorts = g.buildings.filter((b) => b.type === 'port' && islandOf(g, b) > 0 && !b.build);
+  if (!colonyPorts.length) return;
+  spreadRoads(g, [th, ...colonyPorts]);
+  for (const p of colonyPorts) p.connected = true;
+}
+
+function spreadRoads(g, roots) {
+  const conn = new Uint8Array(MAP * MAP);
   const queue = [];
-  for (const [x, y] of borderTiles(th.x, th.y, 2)) {
-    if (g.roads[idx(x, y)]) { conn[idx(x, y)] = 1; queue.push([x, y]); }
+  for (const r of roots) {
+    for (const [x, y] of borderTiles(r.x, r.y, def(r).size)) {
+      if (g.roads[idx(x, y)] && !conn[idx(x, y)]) { conn[idx(x, y)] = 1; queue.push([x, y]); }
+    }
   }
   while (queue.length) {
     const [x, y] = queue.pop();
@@ -299,6 +324,19 @@ export function canPlace(g, type, x, y) {
   if (d.near != null && !touches(g, x, y, d.size, d.near)) {
     return { ok: false, reason: `Doit toucher : ${TERRAIN[d.near].name.toLowerCase()}` };
   }
+  if (d.on != null) {
+    for (let dy = 0; dy < d.size; dy++) {
+      for (let dx = 0; dx < d.size; dx++) {
+        if (g.tiles[idx(x + dx, y + dy)] !== d.on) return { ok: false, reason: `Uniquement sur : ${TERRAIN[d.on].name.toLowerCase()}` };
+      }
+    }
+  }
+  const isl = islandAt(g, x, y);
+  if (isl > 0) {
+    const ports = g.buildings.filter((b) => b.type === 'port');
+    if (type === 'port' && !ports.some((b) => islandOf(g, b) === 0)) return { ok: false, reason: 'Construisez d\'abord un port sur l\'île principale' };
+    if (type !== 'port' && !ports.some((b) => islandOf(g, b) === isl)) return { ok: false, reason: 'Construisez d\'abord un port sur cette île' };
+  }
   if (!canAfford(g, d.cost)) return { ok: false, reason: `Il manque des ressources (${costText(d.cost)})` };
   return { ok: true };
 }
@@ -419,7 +457,12 @@ export function bucketBrigade(g, b) {
 
 // Additionne les effets de toutes les technologies découvertes.
 export function computeMods(g) {
-  const m = { prod: {}, range: {}, fireHouse: 1, storage: 0, upkeep: 1, tax: 1, sat: 0, research: 1, wonderTime: 1 };
+  const D = DIFFICULTIES[g.difficulty ?? 1];
+  const sc = g.scenario ? findScenario(g.scenario) : null;
+  const m = {
+    prod: {}, range: {}, fireHouse: 1, storage: 0, upkeep: D.upkeep, tax: D.tax, sat: 0, research: 1, wonderTime: 1,
+    fire: D.fire * (sc?.mods?.fire || 1), events: D.events,
+  };
   for (const id of g.tech) {
     const e = TECHS.find((t) => t.id === id)?.effect || {};
     for (const [k, v] of Object.entries(e.prod || {})) m.prod[k] = (m.prod[k] || 1) * v;
@@ -512,6 +555,10 @@ function questHelpers(g) {
     count: (type) => g.buildings.filter((b) => b.type === type).length,
     done: (type) => g.buildings.filter((b) => b.type === type && !b.build).length,
     cls: (c) => Math.floor(g.cls[c]),
+    pop: () => Math.floor(population(g)),
+    techs: () => g.tech.length,
+    homePorts: () => g.buildings.filter((b) => isHomePort(g, b) && !b.build).length,
+    colonies: () => new Set(g.buildings.filter((b) => b.type === 'port' && islandOf(g, b) > 0).map((b) => islandOf(g, b))).size,
   };
 }
 
@@ -522,7 +569,37 @@ export function questProgress(g) {
   return { q, cur: Math.min(cur, max), max };
 }
 
+// ---------- Missions de la campagne ----------
+
+export function scenarioGoals(g) {
+  const sc = findScenario(g.scenario);
+  if (!sc) return null;
+  const h = questHelpers(g);
+  const goals = sc.goals.map((q) => {
+    const [cur, max] = q.check(g, h);
+    return { text: q.text, cur: Math.min(cur, max), max, done: cur >= max };
+  });
+  const left = sc.days ? sc.days - (g.day - (g.scenarioStart || 0)) : null;
+  return { sc, goals, left };
+}
+
+function checkScenario(g) {
+  if (!g.scenario || g.scenarioEnded) return;
+  const s = scenarioGoals(g);
+  if (s.goals.every((q) => q.done)) {
+    g.scenarioEnded = 'win';
+    g.pending.push({ type: 'scenarioWin', id: g.scenario, days: g.day - (g.scenarioStart || 0) });
+    return;
+  }
+  const reason = s.left !== null && s.left <= 0 ? 'Le temps imparti est écoulé.' : s.sc.lose?.(g, questHelpers(g));
+  if (reason) {
+    g.scenarioEnded = 'lose';
+    g.pending.push({ type: 'scenarioLose', id: g.scenario, reason });
+  }
+}
+
 export function checkQuests(g) {
+  if (g.scenario) { checkScenario(g); return; }
   for (;;) {
     const p = questProgress(g);
     if (!p || p.cur < p.max) return;
@@ -575,7 +652,7 @@ function updateFires(g) {
     if (b.fire > 0 || b.build || !b.cover || b.cover.fire) continue;
     const risk = fireRisk(g, b);
     if (risk <= 0) continue;
-    if (Math.random() < FIRE.baseRisk * risk * (b.cover.well ? FIRE.wellFactor : 1)) ignite(g, b, false);
+    if (Math.random() < FIRE.baseRisk * g.mods.fire * risk * (b.cover.well ? FIRE.wellFactor : 1)) ignite(g, b, false);
   }
 }
 
@@ -666,7 +743,7 @@ const EVENTS = [
 
 function rollEvent(g) {
   if (g.day < 40) return;
-  if (Math.random() > (hasTrading(g) ? 0.035 : 0.025)) return;
+  if (Math.random() > (hasTrading(g) ? 0.035 : 0.025) * g.mods.events) return;
   const list = EVENTS.filter((e) => e.can(g));
   let r = Math.random() * list.reduce((n, e) => n + e.w, 0);
   for (const e of list) {
@@ -811,6 +888,14 @@ export function step(g) {
   // Chantiers
   for (const b of g.buildings) {
     if (!b.build) continue;
+    // Un chantier consomme des matériaux chaque jour ; sans eux, il s'arrête.
+    const use = def(b).buildUse;
+    b.stalled = !!use && !canAfford(g, use);
+    if (b.stalled) {
+      if (g.day - (g.alerts.build ?? -999) > 20) { g.alerts.build = g.day; notify(g, `Chantier arrêté : il manque des matériaux (${costText(use)} par jour).`, 'warn', 'bad', b); }
+      continue;
+    }
+    if (use) pay(g, use);
     b.build--;
     if (b.build === 0) {
       notify(g, `Chantier terminé : ${def(b).name}.`, 'good', 'quest', b);
@@ -845,17 +930,17 @@ export function step(g) {
 
 export function serialize(g) {
   return JSON.stringify({
-    v: 3, seed: g.seed, cleared: g.cleared, roads: [...g.roads.keys()].filter((i) => g.roads[i]),
+    v: 4, seed: g.seed, cleared: g.cleared, roads: [...g.roads.keys()].filter((i) => g.roads[i]),
     buildings: g.buildings.map(({ id, type, x, y, level, res, lock, paused, fire, build }) => ({ id, type, x, y, level, res, lock, paused, fire, build })),
     goods: g.goods, gold: g.gold, day: g.day, era: g.era, tax: g.tax, quest: g.quest,
     log: g.log.slice(0, 50), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats, alerts: g.alerts,
-    tech: g.tech, rp: g.rp,
+    tech: g.tech, rp: g.rp, difficulty: g.difficulty, scenario: g.scenario, scenarioStart: g.scenarioStart, scenarioEnded: g.scenarioEnded,
   });
 }
 
 export function deserialize(text) {
   const d = JSON.parse(text);
-  if (!d || d.v !== 3) return null;
+  if (!d || d.v !== 4) return null;
   const g = { ...d, tiles: generateMap(d.seed), roads: new Uint8Array(MAP * MAP) };
   for (const i of d.cleared) g.tiles[i] = T.GRASS;
   for (const i of d.roads) g.roads[i] = 1;

@@ -3,7 +3,7 @@ import { MAP, T } from './config.js';
 import { P, WORLD_W, WORLD_H } from './iso.js';
 import { def } from './game.js';
 
-const TERRAIN_COLORS = ['#7cb35a', '#3f7a35', '#9a958c', '#3f86c6', '#6d645b', '#8fa046', '#e3d29a'];
+const TERRAIN_COLORS = ['#7cb35a', '#3f7a35', '#9a958c', '#3f86c6', '#6d645b', '#8fa046', '#e3d29a', '#b5733e', '#d4b13c'];
 const CAT_COLORS = { house: '#e0a96d', raw: '#e8d36a', industry: '#b07a4a', service: '#6aa7e8', deco: '#9be37a' };
 
 export function createMinimap(canvas, cam, mainCanvas, onMove) {

@@ -8,6 +8,11 @@ Jeu de développement de village/cité dans le navigateur. Projet indépendant d
 - Après un changement d'équilibrage ou du moteur (`js/game.js`), lancer `tests/simulation.html` :
   le joueur robot doit toujours atteindre la victoire sans erreur.
 - Console du jeu : `DG.give('gold', 500)`, `DG.days(30)` pour tester vite.
+- Le joueur automatique (`js/autobuild.js`) sert aux tests ET à préparer les villes de départ des missions
+  (`js/scenarios.js`) : s'il est modifié, vérifier aussi qu'une mission avec `prebuild` démarre bien.
+- Si le format de l'état change (taille de carte, structure), incrémenter la version de sauvegarde dans `js/game.js`
+  (`SAVE_KEY` + `v`) pour ignorer proprement les anciennes sauvegardes.
+- Objectif de durée voulu par l'utilisateur : au moins 10 h de jeu (partie libre + campagne).
 - Style voulu par l'utilisateur : épuré et « pro ». **Aucun émoji** dans le jeu : icônes Lucide (`js/icons.js`,
   à régénérer depuis unpkg `lucide-static` si besoin d'une nouvelle icône) et miniatures dessinées (`js/thumbs.js`).
 - Maniabilité : l'outil de construction se désélectionne après usage (option pour le garder), clic droit / Échap annulent.

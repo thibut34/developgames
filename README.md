@@ -1,6 +1,6 @@
 # DevelopGames
 
-Jeu de construction et de gestion de cité dans le navigateur : on fonde un hameau sur une île et on le développe
+Jeu de construction et de gestion de cité dans le navigateur : on fonde un hameau sur un archipel et on le développe
 jusqu'à achever la Grande Cathédrale. JavaScript pur + Canvas, aucune dépendance, jouable sur PC et téléphone
 (installable comme une appli).
 
@@ -8,19 +8,21 @@ jusqu'à achever la Grande Cathédrale. JavaScript pur + Canvas, aucune dépenda
 
 ## Contenu
 
-- Vue isométrique, île générée au hasard (prairie, terre fertile, forêts, rochers, montagnes, eau).
-- **4 classes d'habitants** (paysans, artisans, bourgeois, nobles), suivies maison par maison, chacune avec ses besoins
-  en marchandises et en services. Les maisons évoluent seules quand les besoins de la classe suivante sont prêts ;
-  on peut bloquer l'évolution pour garder des ouvriers.
-- **Chaînes de production** : poisson ; blé → farine → pain ; laine → tissu ; blé → bière ; bois → planches ;
-  bois → charbon ; minerai + charbon → fer → outils ; raisin → vin.
-- Ouvriers par classe, impôts, entretien des bâtiments, commerce, caravanes.
-- **5 ères** (Hameau, Village, Bourg, Ville, Cité) puis un chantier de 60 jours pour la merveille finale.
-- **Incendies** : risque selon le bâtiment, propagation aux voisins, pompiers automatiques, chaîne de seaux, ruines.
-- Saisons de 30 jours (hiver sans récolte), météo, événements (bandits, épidémies, migrants…).
-- Interface épurée à icônes vectorielles (Lucide), miniatures des bâtiments, calques de vue (eau, marchés,
-  chapelles, incendie, beauté, satisfaction), panneaux population / marchandises / finances, objectifs guidés.
-- Routes tracées en glissant avec aperçu, démolition et défrichage par zone, clic droit / Échap pour annuler.
+- **Écran titre** : partie libre (3 difficultés, numéro de carte), **campagne de 8 missions**, 3 emplacements de
+  sauvegarde + sauvegarde automatique.
+- **Archipel** généré au hasard : une grande île et quatre îles à coloniser (épices, filons d'or, terres fertiles, fer).
+  Ports, navires et colonies.
+- **4 classes d'habitants** (paysans, artisans, bourgeois, nobles) suivies maison par maison, chacune avec ses besoins
+  en marchandises et en services (eau, marché, chapelle, taverne, école, médecin, sécurité, beauté).
+- **19 marchandises** et chaînes de production : poisson ; blé → farine → pain ; laine → tissu ; blé → bière ;
+  bois → planches ; bois → charbon ; minerai + charbon → fer → outils ; raisin → vin ; épices ; pépites d'or → bijoux.
+- **Recherche** : 24 technologies sur 5 ères (bibliothèques, universités).
+- Ouvriers par classe, impôts, entretien, commerce, caravanes, épidémies, cambriolages, bandits.
+- **Incendies** : risque selon le bâtiment, propagation, pompiers, chaîne de seaux, ruines.
+- 5 ères puis un chantier de 120 jours pour la Grande Cathédrale, qui consomme des matériaux chaque jour.
+- Saisons de 30 jours, météo, journées de 3 secondes.
+- Interface épurée à icônes vectorielles (Lucide), miniatures des bâtiments, calques de vue, panneaux
+  population / marchandises / finances / recherche, info-bulles, gestes de construction avec aperçu.
 
 ## Développement
 
@@ -30,17 +32,19 @@ python serve.py
 
 Puis ouvrir http://localhost:8000 (serveur sans cache : chaque modification est visible au rechargement).
 
-- `js/config.js` : toutes les données et l'équilibrage (classes, marchandises, bâtiments, ères, incendies, objectifs)
-- `js/game.js` : moteur (simulation jour par jour, routes, ouvriers, besoins, incendies, événements, sauvegarde)
-- `js/world.js` : génération de l'île
+- `js/config.js` : données et équilibrage (classes, marchandises, bâtiments, ères, technologies, incendies, objectifs)
+- `js/scenarios.js` : difficultés et missions de la campagne
+- `js/game.js` : moteur (simulation, routes et liaisons maritimes, ouvriers, besoins, incendies, événements, sauvegarde)
+- `js/world.js` : génération de l'archipel
+- `js/autobuild.js` : joueur automatique (tests d'équilibrage et villes de départ des missions)
 - `js/render.js`, `js/draw.js`, `js/sprites.js`, `js/fx.js`, `js/agents.js`, `js/thumbs.js` : rendu et effets
-- `js/ui.js`, `js/input.js`, `js/minimap.js`, `js/audio.js`, `js/icons.js` : interface, contrôles, sons, icônes
+- `js/ui.js`, `js/title.js`, `js/input.js`, `js/minimap.js`, `js/audio.js`, `js/icons.js` : interface et contrôles
 - `js/main.js` : boucle de jeu et liaison de l'ensemble
 
 ### Test d'équilibrage automatique
 
-http://localhost:8000/tests/simulation.html lance un joueur robot (`tests/bot.js`) sur plusieurs cartes
-et affiche son évolution jusqu'à la victoire. Paramètres : `?seeds=1,2,3&days=3000`.
+http://localhost:8000/tests/simulation.html fait jouer le joueur automatique sur plusieurs cartes jusqu'à la
+victoire. Paramètres : `?seeds=1,2,3&days=4000`.
 
 ### Mise en ligne
 

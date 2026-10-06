@@ -22,16 +22,44 @@ function landColor(t, h, s) {
     case T.FOREST: return [`hsl(105,34%,${33 + v}%)`, `hsl(100,34%,${32 + v}%)`, `hsl(40,34%,${33 + v}%)`, `hsl(200,14%,${84 + v / 2}%)`][s];
     case T.SAND: return `hsl(45,52%,${s === 3 ? 82 : 74 + v}%)`;
     case T.ROCK: return s === 3 ? `hsl(210,8%,${80 + v / 2}%)` : `hsl(35,8%,${55 + v}%)`;
-    case T.MOUNTAIN: return s === 3 ? `hsl(210,8%,${78 + v / 2}%)` : `hsl(30,9%,${44 + v}%)`;
+    case T.MOUNTAIN: case T.GOLD: return s === 3 ? `hsl(210,8%,${78 + v / 2}%)` : `hsl(30,9%,${44 + v}%)`;
+    case T.SPICE: return s === 3 ? `hsl(25,20%,${70 + v / 2}%)` : `hsl(24,44%,${40 + v}%)`;
     default: return '#888';
   }
 }
 
-function buildTerrain(g, s) {
+// Le terrain est découpé en morceaux de CH × CH cases, dessinés à la demande et gardés en cache.
+const CH = 16;
+const CHUNKS = Math.ceil(MAP / CH);
+function chunkBounds(cx, cy) {
+  const x0 = cx * CH, y0 = cy * CH, x1 = Math.min(MAP, x0 + CH), y1 = Math.min(MAP, y0 + CH);
+  const left = Math.floor(P(x0, y1)[0]) - 1, right = Math.ceil(P(x1, y0)[0]) + 1;
+  const top = Math.floor(P(x0, y0)[1]) - 1, bottom = Math.ceil(P(x1, y1)[1]) + 10;
+  return { x0, y0, x1, y1, left, top, w: right - left, h: bottom - top };
+}
+function buildChunk(g, s, cx, cy) {
+  const b = chunkBounds(cx, cy);
   const c = document.createElement('canvas');
-  c.width = WORLD_W;
-  c.height = WORLD_H;
+  c.width = b.w;
+  c.height = b.h;
   const ctx = c.getContext('2d');
+  ctx.translate(-b.left, -b.top);
+  drawTerrain(ctx, g, s, b.x0, b.y0, b.x1, b.y1);
+  return { canvas: c, left: b.left, top: b.top };
+}
+// Version en basse résolution de toute la carte, pour le zoom arrière.
+const LOW = 0.25;
+function buildLow(g, s) {
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(WORLD_W * LOW);
+  c.height = Math.ceil(WORLD_H * LOW);
+  const ctx = c.getContext('2d');
+  ctx.scale(LOW, LOW);
+  drawTerrain(ctx, g, s, 0, 0, MAP, MAP);
+  return c;
+}
+
+function drawTerrain(ctx, g, s, X0, Y0, X1, Y1) {
   const tileAtOr = (x, y) => (x < 0 || y < 0 || x >= MAP || y >= MAP ? T.WATER : g.tiles[y * MAP + x]);
   const diamond = (x, y) => [P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)];
   const fillTile = (x, y, color) => {
@@ -41,8 +69,8 @@ function buildTerrain(g, s) {
     ctx.stroke();
   };
 
-  for (let y = 0; y < MAP; y++) {
-    for (let x = 0; x < MAP; x++) {
+  for (let y = Y0; y < Y1; y++) {
+    for (let x = X0; x < X1; x++) {
       if (g.tiles[y * MAP + x] !== T.WATER) continue;
       let shore = false;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (tileAtOr(x + dx, y + dy) !== T.WATER) shore = true;
@@ -51,8 +79,8 @@ function buildTerrain(g, s) {
     }
   }
 
-  for (let y = 0; y < MAP; y++) {
-    for (let x = 0; x < MAP; x++) {
+  for (let y = Y0; y < Y1; y++) {
+    for (let x = X0; x < X1; x++) {
       const t = g.tiles[y * MAP + x];
       if (t === T.WATER) continue;
       const h = hash(x, y);
@@ -80,6 +108,12 @@ function buildTerrain(g, s) {
           ctx.fillStyle = s === 3 ? '#f2f5fa' : '#b3aea4';
           ctx.beginPath(); ctx.ellipse(p[0] - 1, p[1] - 2, r * 0.9, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
         }
+      } else if (t === T.SPICE && s !== 3) {
+        for (let i = 0; i < 3; i++) {
+          const p = P(x + 0.2 + hash(x, y, i) * 0.6, y + 0.2 + hash(y, x, i) * 0.6);
+          ctx.fillStyle = i % 2 ? '#5f8f3a' : '#7aa64a';
+          ctx.beginPath(); ctx.arc(p[0], p[1], 2.2, 0, Math.PI * 2); ctx.fill();
+        }
       } else if (t === T.GRASS && h > 0.72 && s !== 3) {
         const p = P(x + 0.3 + h * 0.4, y + 0.6 - h * 0.3);
         ctx.fillStyle = s === 0 ? ['#f4e04d', '#ffffff', '#e57373'][Math.floor(h * 30) % 3] : 'rgba(40,80,20,0.3)';
@@ -87,7 +121,6 @@ function buildTerrain(g, s) {
       }
     }
   }
-  return c;
 }
 
 function drawRoad(ctx, g, x, y, paved, connected) {
@@ -117,7 +150,7 @@ function drawRoad(ctx, g, x, y, paved, connected) {
 function statusOf(b) {
   const d = def(b);
   if (b.fire > 0) return ['flame', '#d9452b'];
-  if (b.build) return null;
+  if (b.build) return b.stalled ? ['construction', '#c0762b'] : null;
   if (b.paused) return ['pause', '#5d6b78'];
   if ((d.workers || isHouse(b)) && !b.connected) return ['unlink', '#c0762b'];
   if (d.workers && !b.assigned) return ['user-x', '#c0762b'];
@@ -149,7 +182,17 @@ const OVERLAY_SERVICE = { well: 'well', fire: 'fire', market: 'market', chapel: 
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
-  let terrain = null, terrainKey = '';
+  let terrainKey = '', low = null;
+  const chunks = new Map();
+  const getChunk = (g, s, cx, cy) => {
+    const k = cy * CHUNKS + cx;
+    let c = chunks.get(k);
+    if (c) { chunks.delete(k); chunks.set(k, c); return c; }
+    c = buildChunk(g, s, cx, cy);
+    chunks.set(k, c);
+    if (chunks.size > 28) chunks.delete(chunks.keys().next().value);
+    return c;
+  };
   let view = { x0: 0, y0: 0, x1: 0, y1: 0 };
   const smokeAcc = new Map();
 
@@ -198,7 +241,7 @@ export function createRenderer(canvas) {
     }
     const s = season(g);
     const key = `${g.seed}-${g.terrainVersion}-${s}`;
-    if (key !== terrainKey) { terrain = buildTerrain(g, s); terrainKey = key; }
+    if (key !== terrainKey) { chunks.clear(); low = null; terrainKey = key; }
 
     fx.update(dt, s, w, h);
     agents.update(g, dt, ui.speed);
@@ -222,11 +265,23 @@ export function createRenderer(canvas) {
       ctx.beginPath(); ctx.arc(wx, wy, 14, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
     }
 
-    ctx.drawImage(terrain, 0, 0);
-
     const corners = [[view.x0, view.y0 - 40], [view.x1, view.y0 - 40], [view.x0, view.y1 + 180], [view.x1, view.y1 + 180]].map(([a, b]) => worldToTile(a, b));
     const tx0 = Math.max(0, Math.min(...corners.map((c) => c.x)) - 1), tx1 = Math.min(MAP - 1, Math.max(...corners.map((c) => c.x)) + 1);
     const ty0 = Math.max(0, Math.min(...corners.map((c) => c.y)) - 1), ty1 = Math.min(MAP - 1, Math.max(...corners.map((c) => c.y)) + 1);
+
+    if (cam.zoom < 0.55) {
+      if (!low) low = buildLow(g, s);
+      ctx.drawImage(low, 0, 0, WORLD_W, WORLD_H);
+    } else {
+      for (let cy = Math.floor(ty0 / CH); cy <= Math.floor(ty1 / CH); cy++) {
+        for (let cx = Math.floor(tx0 / CH); cx <= Math.floor(tx1 / CH); cx++) {
+          const b = chunkBounds(cx, cy);
+          if (b.left > view.x1 || b.left + b.w < view.x0 || b.top > view.y1 || b.top + b.h < view.y0) continue;
+          const c = getChunk(g, s, cx, cy);
+          ctx.drawImage(c.canvas, c.left, c.top);
+        }
+      }
+    }
 
     // Reflets sur l'eau
     ctx.strokeStyle = 'rgba(255,255,255,0.26)';
@@ -295,7 +350,7 @@ export function createRenderer(canvas) {
     for (let j = ty0; j <= ty1; j++) {
       for (let i = tx0; i <= tx1; i++) {
         const tt = g.tiles[j * MAP + i];
-        if ((tt !== T.FOREST && tt !== T.MOUNTAIN) || !inView(i, j)) continue;
+        if ((tt !== T.FOREST && tt !== T.MOUNTAIN && tt !== T.GOLD) || !inView(i, j)) continue;
         if (tt === T.FOREST) {
           list.push({
             depth: i + j + 0.5,
@@ -312,7 +367,7 @@ export function createRenderer(canvas) {
           list.push({
             depth: i + j + 0.5,
             draw: () => {
-              const img = mountain(hash(i, j, 7) < 0.5 ? 0 : 1, s);
+              const img = mountain(hash(i, j, 7) < 0.5 ? 0 : 1, s, tt === T.GOLD);
               const [px, py] = P(i + 0.5, j + 0.5);
               ctx.drawImage(img, px - img.w / 2, py - img.h + 18, img.w, img.h);
             },

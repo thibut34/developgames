@@ -2,9 +2,9 @@
 
 export const TW = 64;            // largeur d'une case isométrique (pixels monde)
 export const TH = 32;            // hauteur d'une case isométrique
-export const MAP = 56;           // la carte fait MAP × MAP cases
+export const MAP = 88;           // la carte fait MAP × MAP cases (archipel)
 
-export const DAY_MS = 2500;      // durée d'un jour à vitesse ×1
+export const DAY_MS = 3000;      // durée d'un jour à vitesse ×1
 export const DAYS_PER_SEASON = 30;
 export const SEASONS = [
   { name: 'Printemps', icon: 'flower' },
@@ -13,7 +13,7 @@ export const SEASONS = [
   { name: 'Hiver', icon: 'snowflake' },
 ];
 
-export const T = { GRASS: 0, FOREST: 1, ROCK: 2, WATER: 3, MOUNTAIN: 4, FERTILE: 5, SAND: 6 };
+export const T = { GRASS: 0, FOREST: 1, ROCK: 2, WATER: 3, MOUNTAIN: 4, FERTILE: 5, SAND: 6, SPICE: 7, GOLD: 8 };
 export const TERRAIN = [
   { name: 'Prairie', build: true },
   { name: 'Forêt', build: false },
@@ -22,6 +22,8 @@ export const TERRAIN = [
   { name: 'Montagne', build: false },
   { name: 'Terre fertile', build: true, hint: 'Fermes et vignobles y produisent +50 %.' },
   { name: 'Sable', build: true },
+  { name: 'Sol tropical', build: true, hint: 'Seul endroit où cultiver des épices.' },
+  { name: 'Filon d\'or', build: false, hint: 'Une mine d\'or doit le toucher.' },
 ];
 // Défricher une case : coût et ce qu'on récupère.
 export const CLEAR = {
@@ -48,6 +50,9 @@ export const GOODS = {
   tools: { name: 'Outils', icon: 'hammer', price: 7, color: '#c7cdd3' },
   grapes: { name: 'Raisin', icon: 'grape', price: 1.5, color: '#8a4fa0' },
   wine: { name: 'Vin', icon: 'wine', price: 6, color: '#a3324a' },
+  spices: { name: 'Épices', icon: 'sparkle', price: 8, color: '#d9622b' },
+  nugget: { name: 'Pépites d\'or', icon: 'gem', price: 6, color: '#e9c46a' },
+  jewels: { name: 'Bijoux', icon: 'medal', price: 16, color: '#7fd1c8' },
 };
 export const GOOD_KEYS = Object.keys(GOODS);
 export const GOLD = { name: 'Or', icon: 'coins', color: '#f2c94c' };
@@ -113,6 +118,8 @@ export const CLASSES = [
       { good: 'beer', rate: 0.03 },
       { good: 'wine', rate: 0.04 },
       { good: 'tools', rate: 0.02 },
+      { good: 'spices', rate: 0.03 },
+      { good: 'jewels', rate: 0.012 },
       { service: 'market', label: 'Marché' },
       { service: 'chapel', label: 'Chapelle' },
       { service: 'tavern', label: 'Taverne' },
@@ -214,6 +221,16 @@ export const BUILDINGS = {
     produces: { grapes: 3 }, fertile: 1.5, seasonal: [0.6, 1, 1.9, 0.1], upkeep: 0.8,
     desc: '+50 % sur terre fertile. Vendanges en automne.', look: 'vineyard', wall: '#c9b08a', roof: '#7a3b4a', h: 12,
   },
+  spicefarm: {
+    name: 'Plantation d\'épices', cat: 'raw', era: 3, tech: 'colonial', size: 2, cost: { wood: 20, planks: 15, gold: 300 }, workers: [0, 3],
+    produces: { spices: 3 }, on: T.SPICE, seasonal: [1, 1.1, 1, 0.8], upkeep: 1,
+    desc: 'Uniquement sur sol tropical (île aux épices).', look: 'spicefarm', wall: '#d8b98a', roof: '#a2502a', h: 12,
+  },
+  goldmine: {
+    name: 'Mine d\'or', cat: 'raw', era: 3, tech: 'colonial', size: 1, cost: { planks: 20, stone: 20, gold: 400 }, workers: [1, 3],
+    produces: { nugget: 1.5 }, near: T.GOLD, upkeep: 1.5,
+    desc: 'Doit toucher un filon d\'or (île aux filons).', look: 'mine', wall: '#8a7a55', roof: '#4a3f2a', h: 12,
+  },
   // --- Ateliers ---
   sawmill: {
     name: 'Scierie', cat: 'industry', era: 0, size: 1, cost: { wood: 15, gold: 40 }, workers: [0, 2],
@@ -259,6 +276,11 @@ export const BUILDINGS = {
     consumes: { grapes: 3 }, produces: { wine: 3 }, upkeep: 2,
     desc: 'Presse le raisin en vin.', look: 'winepress', wall: '#e3d3b8', roof: '#7a3b4a', h: 16,
   },
+  jeweler: {
+    name: 'Orfèvre', cat: 'industry', era: 3, tech: 'goldsmith', size: 1, cost: { stone: 30, tools: 10, gold: 500 }, workers: [2, 2],
+    consumes: { nugget: 1.5, tools: 0.3 }, produces: { jewels: 1.5 }, upkeep: 2,
+    desc: 'Travaille les pépites d\'or en bijoux.', look: 'jeweler', wall: '#efe6d6', roof: '#2f5c6b', h: 16,
+  },
   mint: {
     name: 'Hôtel des monnaies', cat: 'industry', era: 3, size: 2, cost: { stone: 80, tools: 20, gold: 600 }, workers: [2, 4],
     consumes: { iron: 1 }, produces: { gold: 10 },
@@ -299,16 +321,23 @@ export const BUILDINGS = {
     service: { type: 'guard', r: 9 }, upkeep: 1, fire: 0,
     desc: 'Protège des bandits si elle couvre l\'hôtel de ville (9 cases).', look: 'tower', wall: '#9d978c', roof: '#59463a', h: 40,
   },
+  port: {
+    name: 'Port', cat: 'service', era: 2, tech: 'navigation', size: 2, cost: { planks: 60, stone: 40, tools: 10, gold: 800 }, workers: [1, 3],
+    near: T.WATER, upkeep: 2, fire: 0.5, storage: 50,
+    desc: 'Relie les îles par bateau. Un port sur l\'île principale et un port sur une autre île forment une colonie : ses routes partent de son port.',
+    look: 'port', wall: '#a77b52', roof: '#2f5c6b', h: 14,
+  },
   trading: {
     name: 'Comptoir', cat: 'service', era: 2, size: 2, cost: { planks: 30, stone: 20, gold: 300 }, workers: [1, 3],
     upkeep: 2,
     desc: 'Meilleurs prix au commerce et caravanes plus fréquentes.', look: 'trading', wall: '#b88a5a', roof: '#2f5c6b', h: 18,
   },
   wonder: {
-    name: 'Grande Cathédrale', cat: 'service', era: 4, size: 3, unique: true, buildDays: 60, fire: 0,
-    cost: { planks: 300, stone: 600, tools: 150, gold: 8000 },
+    name: 'Grande Cathédrale', cat: 'service', era: 4, size: 3, unique: true, buildDays: 120, fire: 0,
+    cost: { planks: 200, stone: 400, tools: 80, gold: 6000 },
+    buildUse: { stone: 4, planks: 2, tools: 1 },
     service: { type: 'chapel', r: 14 }, decor: { v: 5, r: 7 },
-    desc: 'La merveille de votre cité : 60 jours de chantier. L\'achever, c\'est gagner la partie.', look: 'wonder',
+    desc: 'La merveille de votre cité : 120 jours de chantier qui consomment chaque jour 4 pierre, 2 planches et 1 outil (le chantier s\'arrête s\'ils manquent). L\'achever, c\'est gagner la partie.', look: 'wonder',
   },
   library: {
     name: 'Bibliothèque', cat: 'service', era: 0, size: 1, cost: { wood: 20, planks: 10, gold: 80 }, workers: [0, 2],
@@ -426,6 +455,10 @@ export const QUESTS = [
   { text: 'Atteindre 40 bourgeois', check: (g, h) => [h.cls(2), 40], reward: { tools: 20 } },
   { text: 'Passer à l\'ère de la Ville', check: (g) => [g.era, 3], reward: { gold: 800 } },
   { text: 'Produire du vin : vignoble et pressoir', check: (g, h) => [Math.min(1, h.count('vineyard')) + Math.min(1, h.count('winepress')), 2], reward: { wine: 20 } },
+  { text: 'Construire un port sur l\'île principale', check: (g, h) => [h.homePorts(), 1], reward: { planks: 40 } },
+  { text: 'Fonder une colonie : un port sur une autre île', check: (g, h) => [h.colonies(), 1], reward: { gold: 500 } },
+  { text: 'Récolter des épices et des pépites d\'or', check: (g, h) => [Math.min(1, h.count('spicefarm')) + Math.min(1, h.count('goldmine')), 2], reward: { spices: 20 } },
+  { text: 'Fabriquer des bijoux chez un orfèvre', check: (g, h) => [h.count('jeweler'), 1], reward: { jewels: 10 } },
   { text: 'Atteindre 40 nobles', check: (g, h) => [h.cls(3), 40], reward: { gold: 1500 } },
   { text: 'Passer à l\'ère de la Cité', check: (g) => [g.era, 4], reward: { gold: 2000 } },
   { text: 'Achever la Grande Cathédrale', check: (g, h) => [h.done('wonder'), 1], reward: { gold: 5000 } },
