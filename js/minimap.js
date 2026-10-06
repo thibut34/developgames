@@ -4,7 +4,7 @@ import { P, WORLD_W, WORLD_H } from './iso.js';
 import { def } from './game.js';
 
 const TERRAIN_COLORS = ['#7cb35a', '#3f7a35', '#9a958c', '#3f86c6', '#6d645b', '#8fa046', '#e3d29a'];
-const CAT_COLORS = { house: '#e0a96d', food: '#e8d36a', industry: '#b07a4a', service: '#6aa7e8', deco: '#9be37a' };
+const CAT_COLORS = { house: '#e0a96d', raw: '#e8d36a', industry: '#b07a4a', service: '#6aa7e8', deco: '#9be37a' };
 
 export function createMinimap(canvas, cam, mainCanvas, onMove) {
   const ctx = canvas.getContext('2d');
@@ -43,7 +43,7 @@ export function createMinimap(canvas, cam, mainCanvas, onMove) {
     }
     for (const b of g.buildings) {
       const s = def(b).size;
-      const color = b.fire > 0 ? '#ff3b2f' : b.type === 'townhall' ? '#ffffff' : CAT_COLORS[def(b).cat] || '#ddd';
+      const color = b.fire > 0 ? '#ff3b2f' : b.type === 'townhall' ? '#ffffff' : b.type === 'ruins' ? '#3a3633' : CAT_COLORS[def(b).cat] || '#ddd';
       for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) diamond(b.x + dx, b.y + dy, color);
     }
     void w; void h;

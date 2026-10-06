@@ -27,7 +27,8 @@ function pickNext(g, w) {
 
 export function update(g, dt, speed) {
   const roads = connectedRoads(g);
-  const target = roads.length < 2 ? 0 : Math.min(90, Math.floor(g.pop / 4) + 2, roads.length * 2);
+  const pop = g.cls.reduce((a, b) => a + b, 0);
+  const target = roads.length < 2 ? 0 : Math.min(90, Math.floor(pop / 4) + 2, roads.length * 2);
   while (walkers.length > target) walkers.pop();
   while (walkers.length < target) {
     const i = roads[Math.floor(Math.random() * roads.length)];

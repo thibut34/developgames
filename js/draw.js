@@ -1,5 +1,14 @@
 // Dessin des bâtiments en isométrique (formes simples : blocs, toits, détails).
-import { BUILDINGS, HOUSE_LEVELS } from './config.js';
+import { BUILDINGS } from './config.js';
+
+// Aspect des habitations selon leur niveau (classe d'habitants).
+const HOUSE_LOOKS = [
+  null,
+  { wall: '#cdb08a', roof: '#c4a24c', h: 11, type: 'hip', rh: 11, inset: 0.2 },      // chaumière (toit de chaume)
+  { wall: '#e4cfa6', roof: '#b4472f', h: 16, type: 'gable', rh: 11, inset: 0.16 },   // maison
+  { wall: '#eee3cb', roof: '#4a5f7f', h: 24, type: 'gable', rh: 12, inset: 0.12 },   // maison bourgeoise
+  { wall: '#f4efe4', roof: '#3d4552', h: 28, type: 'hip', rh: 13, inset: 0.08 },     // hôtel particulier
+];
 import { P } from './iso.js';
 import { tree } from './sprites.js';
 
@@ -119,6 +128,31 @@ const TOWNHALL = [
   ['#b7895a', '#6e4b2c'], ['#cfc4b0', '#8a3b2b'], ['#e8dcc4', '#3e5f8a'], ['#f2ead8', '#2f5d7a'], ['#f6efe0', '#c9a23a'],
 ];
 
+// Échafaudages d'un chantier en cours (progress de 0 à 1).
+export function drawScaffold(ctx, b, top, progress) {
+  const s = BUILDINGS[b.type].size;
+  const corners = [P(b.x + 0.05, b.y + s - 0.05), P(b.x + s - 0.05, b.y + s - 0.05), P(b.x + s - 0.05, b.y + 0.05)];
+  const h = Math.max(20, corners[1][1] - top);
+  ctx.strokeStyle = '#8a6a45';
+  ctx.lineWidth = 1.5;
+  for (const p of corners) { ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0], p[1] - h); ctx.stroke(); }
+  for (let k = 1; k <= 4; k++) {
+    const dy = (h * k) / 4;
+    ctx.beginPath();
+    ctx.moveTo(corners[0][0], corners[0][1] - dy);
+    ctx.lineTo(corners[1][0], corners[1][1] - dy);
+    ctx.lineTo(corners[2][0], corners[2][1] - dy);
+    ctx.stroke();
+  }
+  // Barre de progression
+  const c = P(b.x + s / 2, b.y + s / 2);
+  const w = 24 * s;
+  ctx.fillStyle = 'rgba(20,28,22,0.85)';
+  ctx.fillRect(c[0] - w / 2, top - 14, w, 6);
+  ctx.fillStyle = '#e9c46a';
+  ctx.fillRect(c[0] - w / 2 + 1, top - 13, (w - 2) * progress, 4);
+}
+
 // Dessine un bâtiment. Renvoie { top: y du point le plus haut, smoke: point de fumée ou null }.
 export function drawBuilding(ctx, b, env) {
   const d = BUILDINGS[b.type];
@@ -130,21 +164,166 @@ export function drawBuilding(ctx, b, env) {
 
   switch (d.look) {
     case 'house': {
-      const L = HOUSE_LEVELS[b.level || 1];
-      if ((b.level || 1) === 1) {
-        const bx = box(ctx, x + 0.22, y + 0.22, x + 0.8, y + 0.8, L.h, L.wall, L.roof, 'hip', 10);
-        door(ctx, bx, 0.4);
-        top = bx.top;
+      const lv = b.level || 1;
+      const L = HOUSE_LOOKS[lv];
+      const empty = (b.res ?? 1) < 0.5;
+      const bx = box(ctx, x + L.inset, y + L.inset, x + 1 - L.inset, y + 1 - L.inset, L.h, L.wall, L.roof, L.type, L.rh);
+      const lit = env.season === 3 && !empty ? '#e8c46a' : '#3d4a5c';
+      if (lv === 1) {
+        onFace(ctx, bx, 'R', 0.3, 0.55, 0.35, 0.7, lit);
       } else {
-        const inset = b.level === 4 ? 0.08 : b.level === 3 ? 0.12 : 0.16;
-        const type = b.level === 4 ? 'hip' : 'gable';
-        const bx = box(ctx, x + inset, y + inset, x + 1 - inset, y + 1 - inset, L.h, L.wall, L.roof, type, 10 + b.level);
-        windows(ctx, bx, b.level - 1, b.level === 2 ? 1 : 2, env.season === 3 ? '#e8c46a' : '#3d4a5c');
-        door(ctx, bx, 0.6);
-        if (b.level === 4) onFace(ctx, bx, 'R', 0, 1, 0.48, 0.53, '#c9a23a');
-        smoke = chimney(ctx, x + 0.62, y + 0.25, L.h);
-        top = bx.top;
+        windows(ctx, bx, lv === 2 ? 1 : 2, lv === 2 ? 1 : 2, lit);
       }
+      door(ctx, bx, lv === 1 ? 0.4 : 0.6);
+      if (lv === 4) onFace(ctx, bx, 'R', 0, 1, 0.48, 0.53, '#c9a23a');
+      if (lv >= 2 && !empty) smoke = chimney(ctx, x + 0.62, y + 0.25, L.h);
+      top = bx.top;
+      break;
+    }
+    case 'fisher': {
+      const bx = box(ctx, x + 0.2, y + 0.2, x + 0.75, y + 0.75, d.h, d.wall, d.roof, 'gable', 9);
+      door(ctx, bx, 0.4);
+      const p = P(x + 0.95, y + 0.75);
+      ctx.fillStyle = '#7a5530';
+      ctx.beginPath(); ctx.ellipse(p[0], p[1], 10, 3.5, 0.4, 0, Math.PI); ctx.fill();
+      ctx.strokeStyle = 'rgba(80,60,40,0.6)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i++) { const a = P(x + 0.1, y + 0.85 + i * 0.04), c = P(x + 0.5, y + 0.85 + i * 0.04); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(c[0], c[1]); ctx.stroke(); }
+      top = bx.top;
+      break;
+    }
+    case 'sheep': {
+      ground(ctx, x + 0.05, y + 0.05, x + s - 0.05, y + s - 0.05, season === 3 ? '#e2e7ee' : '#8cc063', 'rgba(60,40,20,0.25)');
+      // clôture
+      ctx.strokeStyle = '#7a5a35';
+      ctx.lineWidth = 1.5;
+      const f = [P(x + 0.08, y + 0.08), P(x + s - 0.08, y + 0.08), P(x + s - 0.08, y + s - 0.08), P(x + 0.08, y + s - 0.08)];
+      ctx.beginPath(); ctx.moveTo(f[0][0], f[0][1] - 3);
+      for (const p of [...f.slice(1), f[0]]) ctx.lineTo(p[0], p[1] - 3);
+      ctx.stroke();
+      const bx = box(ctx, x + 0.12, y + 0.12, x + 0.95, y + 0.85, d.h, d.wall, d.roof, 'gable', 9);
+      const t = env.time / 1000;
+      for (let i = 0; i < 5; i++) {
+        const p = P(x + 0.9 + ((i * 0.37 + Math.sin(t * 0.3 + i) * 0.05) % 0.9), y + 1 + ((i * 0.53) % 0.8));
+        ctx.fillStyle = '#f4f1ea';
+        ctx.beginPath(); ctx.ellipse(p[0], p[1] - 3, 4.5, 3, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#3a332c';
+        ctx.beginPath(); ctx.arc(p[0] + 4, p[1] - 4, 1.6, 0, Math.PI * 2); ctx.fill();
+      }
+      top = bx.top;
+      break;
+    }
+    case 'charcoal': {
+      const bx = box(ctx, x + 0.12, y + 0.12, x + 0.55, y + 0.55, d.h, d.wall, d.roof, 'hip', 8);
+      const p = P(x + 0.72, y + 0.72);
+      ctx.fillStyle = '#3b3632';
+      ctx.beginPath(); ctx.ellipse(p[0], p[1] - 2, 13, 9, 0, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(p[0], p[1] - 2, 13, 5, 0, 0, Math.PI); ctx.fill();
+      if (b.output) smoke = [p[0], p[1] - 10];
+      top = bx.top;
+      break;
+    }
+    case 'vineyard': {
+      ground(ctx, x + 0.05, y + 0.05, x + s - 0.05, y + s - 0.05, season === 3 ? '#e6e9ee' : '#9c7a52', 'rgba(60,40,20,0.3)');
+      const vine = season === 3 ? '#7a6a5a' : season === 2 ? '#b0682e' : '#4f8a34';
+      for (let i = 0; i < 6; i++) {
+        const t = 0.15 + i * 0.3;
+        for (let j = 0; j < 7; j++) {
+          const p = P(x + t, y + 0.9 + j * 0.15);
+          ctx.fillStyle = vine;
+          ctx.beginPath(); ctx.arc(p[0], p[1] - 3, 2.6, 0, Math.PI * 2); ctx.fill();
+          if (season === 2 && (i + j) % 2 === 0) { ctx.fillStyle = '#5a2a6a'; ctx.beginPath(); ctx.arc(p[0] + 1, p[1] - 1, 1.3, 0, Math.PI * 2); ctx.fill(); }
+        }
+      }
+      const bx = box(ctx, x + 0.1, y + 0.1, x + 1.1, y + 0.75, d.h, d.wall, d.roof, 'gable', 10);
+      top = bx.top;
+      break;
+    }
+    case 'sawmill': {
+      const bx = box(ctx, x + 0.12, y + 0.12, x + 0.88, y + 0.62, d.h, d.wall, d.roof, 'gable', 9);
+      onFace(ctx, bx, 'L', 0.2, 0.8, 0, 0.6, '#5a3b22');
+      for (const [i, j] of [[0.25, 0.8], [0.5, 0.82], [0.75, 0.8]]) {
+        box(ctx, x + i - 0.12, y + j - 0.06, x + i + 0.12, y + j + 0.06, 3, '#d2a265', '#e2b77a', 'flat');
+      }
+      top = bx.top;
+      break;
+    }
+    case 'mill': {
+      const bx = box(ctx, x + 0.25, y + 0.25, x + 0.75, y + 0.75, d.h, d.wall, d.roof, 'hip', 12);
+      door(ctx, bx, 0.4);
+      const hub = up(P(x + 0.55, y + 0.62), d.h - 2);
+      const a0 = b.eff > 0 ? env.time / 900 : 0.4;
+      ctx.strokeStyle = '#5b4632';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) {
+        const a = a0 + (i * Math.PI) / 2;
+        const ex = hub[0] + Math.cos(a) * 20, ey = hub[1] + Math.sin(a) * 20;
+        ctx.beginPath(); ctx.moveTo(hub[0], hub[1]); ctx.lineTo(ex, ey); ctx.stroke();
+        const px = -Math.sin(a) * 4, py = Math.cos(a) * 4;
+        poly(ctx, [[hub[0] + Math.cos(a) * 7, hub[1] + Math.sin(a) * 7], [ex, ey], [ex + px, ey + py], [hub[0] + Math.cos(a) * 7 + px, hub[1] + Math.sin(a) * 7 + py]], 'rgba(240,232,214,0.95)', 'rgba(90,70,50,0.6)');
+      }
+      ctx.fillStyle = '#3a2f28';
+      ctx.beginPath(); ctx.arc(hub[0], hub[1], 2.2, 0, Math.PI * 2); ctx.fill();
+      top = Math.min(bx.top, hub[1] - 20);
+      break;
+    }
+    case 'bakery': {
+      const bx = box(ctx, x + 0.15, y + 0.15, x + 0.85, y + 0.85, d.h, d.wall, d.roof, 'gable', 10);
+      windows(ctx, bx, 1, 1, '#f2c46b');
+      door(ctx, bx, 0.6);
+      if (b.output) smoke = up(P(x + 0.3, y + 0.28), d.h + 14);
+      box(ctx, x + 0.24, y + 0.22, x + 0.36, y + 0.34, 14, '#9a8a7a', '#6a5a4a', 'flat', 0, d.h - 2);
+      top = bx.top - 6;
+      break;
+    }
+    case 'weaver': {
+      const bx = box(ctx, x + 0.15, y + 0.15, x + 0.85, y + 0.85, d.h, d.wall, d.roof, 'gable', 10);
+      windows(ctx, bx, 1, 2);
+      door(ctx, bx, 0.45);
+      const p = P(x + 0.95, y + 0.55);
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = ['#8f6bb5', '#c0504d', '#3e7cb1'][i];
+        ctx.fillRect(p[0] - 2 + i * 4, p[1] - 14, 3, 11);
+      }
+      top = bx.top;
+      break;
+    }
+    case 'brewery': {
+      const bx = box(ctx, x + 0.12, y + 0.15, x + 0.85, y + 0.75, d.h, d.wall, d.roof, 'gable', 11);
+      door(ctx, bx, 0.6);
+      for (const [i, j] of [[0.3, 0.9], [0.55, 0.92]]) {
+        const p = P(x + i, y + j);
+        ctx.fillStyle = '#7a5530';
+        ctx.beginPath(); ctx.ellipse(p[0], p[1] - 5, 5, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#3a2a1a'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(p[0] - 5, p[1] - 5); ctx.lineTo(p[0] + 5, p[1] - 5); ctx.stroke();
+      }
+      top = bx.top;
+      break;
+    }
+    case 'smelter': {
+      const bx = box(ctx, x + 0.15, y + 0.15, x + 0.85, y + 0.85, d.h, d.wall, d.roof, 'gable', 9);
+      onFace(ctx, bx, 'L', 0.3, 0.7, 0, 0.5, b.output ? '#ff8a2a' : '#2a201a');
+      box(ctx, x + 0.62, y + 0.2, x + 0.8, y + 0.38, 30, '#6d6156', '#2e2925', 'flat', 0, 0);
+      smoke = b.output ? up(P(x + 0.71, y + 0.29), 30) : null;
+      top = bx.top - 10;
+      break;
+    }
+    case 'winepress': {
+      const bx = box(ctx, x + 0.15, y + 0.15, x + 0.85, y + 0.85, d.h, d.wall, d.roof, 'hip', 11);
+      onFace(ctx, bx, 'L', 0.35, 0.65, 0, 0.6, '#5a2a30');
+      windows(ctx, bx, 1, 1);
+      top = bx.top;
+      break;
+    }
+    case 'ruins': {
+      const p = P(x + 0.5, y + 0.5);
+      ground(ctx, x + 0.1, y + 0.1, x + 0.9, y + 0.9, '#5a524a', 'rgba(0,0,0,0.3)');
+      box(ctx, x + 0.2, y + 0.2, x + 0.45, y + 0.3, 9, '#4a4440', '#2a2522', 'flat');
+      box(ctx, x + 0.55, y + 0.5, x + 0.8, y + 0.62, 5, '#4a4440', '#2a2522', 'flat');
+      ctx.fillStyle = '#2a2522';
+      for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(p[0] - 10 + i * 4, p[1] + (i % 2) * 3, 2, 0, Math.PI * 2); ctx.fill(); }
+      top = p[1] - 14;
       break;
     }
     case 'farm': {

@@ -8,6 +8,9 @@ Jeu de développement de village/cité dans le navigateur. Projet indépendant d
 - Après un changement d'équilibrage ou du moteur (`js/game.js`), lancer `tests/simulation.html` :
   le joueur robot doit toujours atteindre la victoire sans erreur.
 - Console du jeu : `DG.give('gold', 500)`, `DG.days(30)` pour tester vite.
+- Style voulu par l'utilisateur : épuré et « pro ». **Aucun émoji** dans le jeu : icônes Lucide (`js/icons.js`,
+  à régénérer depuis unpkg `lucide-static` si besoin d'une nouvelle icône) et miniatures dessinées (`js/thumbs.js`).
+- Maniabilité : l'outil de construction se désélectionne après usage (option pour le garder), clic droit / Échap annulent.
 - Doit rester jouable sur mobile (tactile, petits écrans) : un portage mobile est prévu plus tard.
 - Textes du jeu et messages de commit en français.
 

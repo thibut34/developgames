@@ -1,40 +1,40 @@
-// Moteur du jeu : état, construction, routes, simulation jour par jour, événements, sauvegarde.
+// Moteur du jeu : état, construction, routes, simulation jour par jour, incendies, événements, sauvegarde.
 import {
-  MAP, T, TERRAIN, CLEAR, RES, RES_KEYS, START, BASE_STORAGE, WORKFORCE, FOOD_PER_PERSON,
-  WINTER_WOOD_PER_PERSON, ROAD_COST, TAXES, LEVEL_OUTPUT, MAX_LEVEL, ERAS, HOUSE_LEVELS,
-  DECOR_NEEDED, BUILDINGS, WORK_PRIORITY, QUESTS, DAYS_PER_SEASON, SEASONS, UPKEEP,
+  MAP, T, TERRAIN, CLEAR, GOODS, GOOD_KEYS, START, BASE_STORAGE, STORAGE_PER_ERA, WORKFORCE, ROAD_COST,
+  CLASSES, TAXES, ERAS, BUILDINGS, WORK_PRIORITY, QUESTS, DAYS_PER_SEASON, SEASONS, FIRE,
 } from './config.js';
 import { generateMap } from './world.js';
 
-const SAVE_KEY = 'developgames-save-v2';
-const SERVICE_TYPES = ['well', 'chapel', 'market', 'tavern', 'school', 'fire', 'guard'];
+const SAVE_KEY = 'developgames-save-v3';
 
 export const def = (b) => BUILDINGS[b.type];
 const idx = (x, y) => y * MAP + x;
 export const inMap = (x, y) => x >= 0 && y >= 0 && x < MAP && y < MAP;
+export const resName = (k) => (k === 'gold' ? 'or' : GOODS[k].name.toLowerCase());
 
 // ---------- Création ----------
 
 export function createGame(seed = Math.floor(Math.random() * 1e9)) {
+  const goods = Object.fromEntries(GOOD_KEYS.map((k) => [k, START.goods[k] || 0]));
   const g = {
     seed,
     tiles: generateMap(seed),
     cleared: [],
     roads: new Uint8Array(MAP * MAP),
     buildings: [],
-    res: { ...START.res },
-    pop: START.pop,
+    goods,
+    gold: START.gold,
     day: 0,
     era: 0,
     tax: 1,
-    happiness: 60,
     quest: 0,
     log: [],
     history: [],
-    prices: Object.fromEntries(RES_KEYS.filter((k) => k !== 'gold').map((k) => [k, 1])),
+    prices: Object.fromEntries(GOOD_KEYS.map((k) => [k, 1])),
     nextId: 1,
     won: false,
-    stats: { built: 0, fires: 0, maxPop: START.pop },
+    stats: { built: 0, fires: 0, maxPop: 0 },
+    alerts: {},
   };
   const c = MAP / 2 - 1;
   g.buildings.push({ id: g.nextId++, type: 'townhall', x: c, y: c, level: 1 });
@@ -45,16 +45,19 @@ export function createGame(seed = Math.floor(Math.random() * 1e9)) {
     }
   }
   init(g);
-  log(g, `Fondation du hameau. Bienvenue, bâtisseur !`, 'good');
+  log(g, 'Fondation du hameau.', 'good');
   return g;
 }
 
 function init(g) {
   g.notes = [];      // messages à afficher (vidés par l'interface)
-  g.pending = [];    // fenêtres à ouvrir (caravane, victoire…)
+  g.pending = [];    // fenêtres à ouvrir (caravane, ère, victoire)
   g.terrainVersion = (g.terrainVersion || 0) + 1;
-  g.lastGain = Object.fromEntries(RES_KEYS.map((k) => [k, 0]));
+  g.supply = CLASSES.map(() => ({}));
+  g.flow = { prod: {}, use: {} };
+  g.fin = { taxes: 0, upkeep: 0, other: 0 };
   rebuild(g);
+  for (const b of g.buildings) if (isHouse(b)) b.sat = b.connected ? houseSat(g, b) : 0;
 }
 
 // ---------- Outils de calcul ----------
@@ -62,7 +65,7 @@ function init(g) {
 export const season = (g) => Math.floor(g.day / DAYS_PER_SEASON) % 4;
 export const year = (g) => Math.floor(g.day / (DAYS_PER_SEASON * 4)) + 1;
 export const dayOfSeason = (g) => (g.day % DAYS_PER_SEASON) + 1;
-export const dateText = (g) => `${SEASONS[season(g)].icon} ${SEASONS[season(g)].name}, an ${year(g)}`;
+export const dateText = (g) => `${SEASONS[season(g)].name}, jour ${dayOfSeason(g)}, an ${year(g)}`;
 
 export function tileAt(g, x, y) { return inMap(x, y) ? g.tiles[idx(x, y)] : null; }
 export function roadAt(g, x, y) { return inMap(x, y) && g.roads[idx(x, y)] === 1; }
@@ -72,41 +75,37 @@ export function buildingAt(g, x, y) {
   return id ? g.byId.get(id) : null;
 }
 
-export const housing = (g) => g.buildings.reduce((n, b) => n + capOf(b), 0);
-export function capOf(b) {
-  if (b.type === 'house') return HOUSE_LEVELS[b.level].cap;
-  return def(b).housing || 0;
-}
+export const isHouse = (b) => b.type === 'house';
+export const capOf = (b) => (isHouse(b) ? CLASSES[b.level - 1].cap : 0);
+export const population = (g) => g.cls.reduce((a, b) => a + b, 0);
 export const storage = (g) =>
-  g.buildings.reduce((n, b) => n + (def(b).storage || 0), BASE_STORAGE + g.era * 150);
-
-export const upkeepOf = (g) => g.buildings.reduce((n, b) => n + (UPKEEP[b.type] || 0), 0);
-
-export function workersNeeded(b) {
-  const d = def(b);
-  return d.workers ? d.workers + (b.level - 1) : 0;
-}
+  g.buildings.reduce((n, b) => n + (b.build ? 0 : def(b).storage || 0), BASE_STORAGE + g.era * STORAGE_PER_ERA);
+export const upkeepOf = (b) => (b.build ? 0 : def(b).upkeep || 0);
+export const workersNeeded = (b) => (def(b).workers ? def(b).workers[1] : 0);
 
 export function isWorking(b) {
   const d = def(b);
-  if (b.fire > 0 || b.paused) return false;
+  if (b.fire > 0 || b.paused || b.build) return false;
   if (d.workers) return b.connected && b.assigned > 0;
   return true;
 }
 
+export const amount = (g, k) => (k === 'gold' ? g.gold : g.goods[k]);
 export function canAfford(g, cost = {}) {
-  return Object.entries(cost).every(([k, v]) => g.res[k] >= v);
+  return Object.entries(cost).every(([k, v]) => amount(g, k) >= v);
 }
-function pay(g, cost = {}) { for (const [k, v] of Object.entries(cost)) g.res[k] -= v; }
-function gain(g, res = {}) {
-  const cap = storage(g);
-  for (const [k, v] of Object.entries(res)) {
-    g.res[k] += v;
-    if (k !== 'gold') g.res[k] = Math.min(g.res[k], Math.max(cap, g.res[k] - v));
+function pay(g, cost = {}) {
+  for (const [k, v] of Object.entries(cost)) {
+    if (k === 'gold') g.gold -= v; else g.goods[k] -= v;
   }
 }
-export const costText = (cost = {}) =>
-  Object.entries(cost).map(([k, v]) => `${Math.ceil(v)} ${RES[k].icon}`).join('  ');
+export function gain(g, res = {}) {
+  const cap = storage(g);
+  for (const [k, v] of Object.entries(res)) {
+    if (k === 'gold') g.gold += v;
+    else g.goods[k] = Math.min(Math.max(cap, g.goods[k]), g.goods[k] + v);
+  }
+}
 
 function footprintDist(a, b) {
   const as = def(a).size, bs = def(b).size;
@@ -130,7 +129,7 @@ function touches(g, x, y, s, terrain) {
 
 export function log(g, text, kind = '') {
   g.log.unshift({ day: g.day, text, kind });
-  if (g.log.length > 80) g.log.length = 80;
+  if (g.log.length > 100) g.log.length = 100;
 }
 function notify(g, text, kind = '', sound = '', focus = null) {
   g.notes?.push({ text, kind, sound, focus });
@@ -147,9 +146,15 @@ export function rebuild(g) {
     const s = def(b).size;
     for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) g.occ[idx(b.x + dx, b.y + dy)] = b.id;
   }
+  countClasses(g);
   computeConnectivity(g);
   assignWorkers(g);
   computeCoverage(g);
+}
+
+function countClasses(g) {
+  g.cls = CLASSES.map(() => 0);
+  for (const b of g.buildings) if (isHouse(b)) g.cls[b.level - 1] += b.res || 0;
 }
 
 function computeConnectivity(g) {
@@ -175,29 +180,35 @@ function computeConnectivity(g) {
   }
 }
 
+function priority(b) {
+  const i = WORK_PRIORITY.indexOf(b.type);
+  return i < 0 ? WORK_PRIORITY.length : i;
+}
+
 function assignWorkers(g) {
-  let avail = Math.floor(g.pop * WORKFORCE);
-  g.workforce = avail;
+  const avail = g.cls.map((n) => Math.floor(n * WORKFORCE));
+  g.workforce = [...avail];
   const list = g.buildings
-    .filter((b) => workersNeeded(b) > 0)
-    .sort((a, b) => (WORK_PRIORITY[def(a).cat] - WORK_PRIORITY[def(b).cat]) || a.id - b.id);
+    .filter((b) => def(b).workers)
+    .sort((a, b) => priority(a) - priority(b) || a.id - b.id);
   for (const b of list) {
-    if (b.paused || b.fire > 0 || !b.connected) { b.assigned = 0; continue; }
-    b.assigned = Math.min(workersNeeded(b), avail);
-    avail -= b.assigned;
+    const [c, n] = def(b).workers;
+    if (b.paused || b.fire > 0 || b.build || !b.connected) { b.assigned = 0; continue; }
+    b.assigned = Math.min(n, avail[c]);
+    avail[c] -= b.assigned;
   }
   g.idle = avail;
 }
 
 function computeCoverage(g) {
-  const services = g.buildings.filter((b) => def(b).service && isWorking(b));
-  const decors = g.buildings.filter((b) => def(b).decor);
+  const services = g.buildings.filter((b) => def(b).service && isWorking(b) && (b.connected || !def(b).workers));
+  const decors = g.buildings.filter((b) => def(b).decor && !b.build);
   for (const b of g.buildings) {
     b.cover = {};
     for (const s of services) {
       if (footprintDist(b, s) <= def(s).service.r) b.cover[def(s).service.type] = true;
     }
-    if (b.type === 'house') {
+    if (isHouse(b)) {
       b.decor = decors.reduce((n, d) => n + (footprintDist(b, d) <= def(d).decor.r ? def(d).decor.v : 0), 0);
     }
   }
@@ -205,39 +216,60 @@ function computeCoverage(g) {
 
 // ---------- Besoins des habitations ----------
 
-function needMet(g, b, need) {
-  switch (need) {
-    case 'road': return b.connected;
-    case 'food': return g.res.food > 0;
-    case 'decor': return (b.decor || 0) >= DECOR_NEEDED;
-    case 'tools': return g.res.tools > 0;
-    default: return !!b.cover[need];
-  }
+// Satisfaction de chaque besoin (0 à 1) pour une maison, au niveau donné.
+export function houseNeeds(g, b, level = b.level) {
+  const c = level - 1;
+  return CLASSES[c].needs.map((n) => {
+    let value, label;
+    if (n.food) { value = g.supply[c].food ?? (g.goods.fish + g.goods.bread > 0 ? 1 : 0); label = n.label; }
+    else if (n.good) { value = g.supply[c][n.good] ?? (g.goods[n.good] > 0 ? 1 : 0); label = GOODS[n.good].name; }
+    else if (n.service) { value = b.cover[n.service] ? 1 : 0; label = n.label; }
+    else { value = Math.min(1, (b.decor || 0) / n.decor); label = n.label; }
+    return { ...n, label, value };
+  });
 }
 
-export function houseNeeds(g, b, level = b.level + 1) {
-  const L = HOUSE_LEVELS[level];
-  if (!L) return null;
-  return {
-    level,
-    eraOk: (L.era || 0) <= g.era,
-    list: L.needs.map((n) => ({ need: n, ok: needMet(g, b, n) })),
-  };
+export function houseSat(g, b, level = b.level) {
+  const list = houseNeeds(g, b, level);
+  const avg = list.reduce((n, x) => n + x.value, 0) / list.length;
+  return Math.max(0, Math.min(1, avg + TAXES[g.tax].sat - (g.broke ? 0.1 : 0)));
 }
 
-function houseTarget(g, b) {
-  for (let L = HOUSE_LEVELS.length - 1; L >= 2; L--) {
-    const n = houseNeeds(g, b, L);
-    if (n.eraOk && n.list.every((x) => x.ok)) return L;
+// Peut-elle passer au niveau supérieur ? Renvoie la raison sinon.
+export function upgradeStatus(g, b) {
+  if (b.level >= CLASSES.length) return { ok: false, max: true, reason: 'Niveau maximum' };
+  const next = CLASSES[b.level];
+  if (g.era < b.level) return { ok: false, reason: `Disponible à l'ère : ${ERAS[b.level].name}` };
+  if ((b.sat ?? 0) < 0.8) return { ok: false, reason: 'Habitants pas assez satisfaits (80 % requis)' };
+  if ((b.res || 0) < capOf(b) * 0.9) return { ok: false, reason: 'Maison pas encore pleine' };
+  // On ne fait évoluer que si la classe suivante trouvera de quoi vivre (sinon elle repartirait).
+  const nextNeeds = houseNeeds(g, b, b.level + 1);
+  const goodsNeeds = nextNeeds.filter((n) => n.good || n.food);
+  const goodsAvg = goodsNeeds.reduce((n, x) => n + x.value, 0) / Math.max(1, goodsNeeds.length);
+  if (houseSat(g, b, b.level + 1) < 0.7 || goodsAvg < 0.5) {
+    return { ok: false, reason: `Les besoins des ${next.name.toLowerCase()} ne sont pas encore prêts` };
   }
-  return 1;
+  if (!canAfford(g, next.upgrade)) return { ok: false, reason: `Il faut ${costText(next.upgrade)}` };
+  return { ok: true, cost: next.upgrade };
 }
+
+export function upgradeHouse(g, b) {
+  const s = upgradeStatus(g, b);
+  if (!s.ok) return s;
+  pay(g, s.cost);
+  b.level++;
+  b.sat = houseSat(g, b);
+  rebuild(g);
+  checkQuests(g);
+  return { ok: true };
+}
+
+export const costText = (cost = {}) =>
+  Object.entries(cost).map(([k, v]) => `${Math.ceil(v)} ${resName(k)}`).join(', ');
 
 // ---------- Construction ----------
 
-export function eraLocked(g, type) {
-  return (BUILDINGS[type].era || 0) > g.era;
-}
+export const eraLocked = (g, type) => (BUILDINGS[type].era || 0) > g.era;
 
 export function canPlace(g, type, x, y) {
   const d = BUILDINGS[type];
@@ -248,15 +280,15 @@ export function canPlace(g, type, x, y) {
       const tx = x + dx, ty = y + dy;
       if (!inMap(tx, ty)) return { ok: false, reason: 'Hors de la carte' };
       const t = g.tiles[idx(tx, ty)];
-      if (!TERRAIN[t].build) return { ok: false, reason: `Impossible sur : ${TERRAIN[t].name}` };
+      if (!TERRAIN[t].build) return { ok: false, reason: `Impossible sur : ${TERRAIN[t].name.toLowerCase()}` };
       if (g.occ[idx(tx, ty)]) return { ok: false, reason: 'Emplacement occupé' };
       if (g.roads[idx(tx, ty)]) return { ok: false, reason: 'Une route passe ici' };
     }
   }
   if (d.near != null && !touches(g, x, y, d.size, d.near)) {
-    return { ok: false, reason: `Doit toucher : ${TERRAIN[d.near].name}` };
+    return { ok: false, reason: `Doit toucher : ${TERRAIN[d.near].name.toLowerCase()}` };
   }
-  if (!canAfford(g, d.cost)) return { ok: false, reason: 'Ressources insuffisantes' };
+  if (!canAfford(g, d.cost)) return { ok: false, reason: `Il manque des ressources (${costText(d.cost)})` };
   return { ok: true };
 }
 
@@ -266,16 +298,13 @@ export function place(g, type, x, y) {
   const d = BUILDINGS[type];
   pay(g, d.cost);
   const b = { id: g.nextId++, type, x, y, level: 1 };
+  if (type === 'house') b.res = 0;
+  if (d.buildDays) b.build = d.buildDays;
   g.buildings.push(b);
   g.stats.built++;
   rebuild(g);
-  if (type === 'wonder') {
-    g.won = true;
-    g.pending.push({ type: 'victory' });
-    log(g, 'La Grande Cathédrale est achevée !', 'good');
-  }
   checkQuests(g);
-  const warn = !b.connected && d.workers ? 'Pensez à la relier par une route.' : '';
+  const warn = !b.connected && (d.workers || type === 'house') ? 'Pas encore relié à l\'hôtel de ville par une route.' : '';
   return { ok: true, building: b, warn };
 }
 
@@ -283,84 +312,96 @@ export function placeRoad(g, x, y) {
   if (!inMap(x, y)) return { ok: false, reason: 'Hors de la carte' };
   const i = idx(x, y);
   if (g.roads[i]) return { ok: false, silent: true };
-  if (!TERRAIN[g.tiles[i]].build) return { ok: false, reason: `Impossible sur : ${TERRAIN[g.tiles[i]].name}` };
+  if (!TERRAIN[g.tiles[i]].build) return { ok: false, reason: `Impossible sur : ${TERRAIN[g.tiles[i]].name.toLowerCase()}` };
   if (g.occ[i]) return { ok: false, reason: 'Emplacement occupé' };
   if (!canAfford(g, ROAD_COST)) return { ok: false, reason: 'Pas assez de bois' };
   pay(g, ROAD_COST);
   g.roads[i] = 1;
-  rebuild(g);
-  checkQuests(g);
   return { ok: true };
+}
+
+// Trace une route le long d'un chemin (liste de cases) puis recalcule une seule fois.
+export function placeRoadPath(g, path) {
+  let built = 0, firstError = null;
+  for (const [x, y] of path) {
+    const r = placeRoad(g, x, y);
+    if (r.ok) built++;
+    else if (!r.silent && !firstError) firstError = r.reason;
+  }
+  if (built) {
+    rebuild(g);
+    checkQuests(g);
+  }
+  return { built, error: built ? null : firstError };
+}
+
+export function roadPathCost(g, path) {
+  return path.filter(([x, y]) => inMap(x, y) && !g.roads[idx(x, y)]).length * ROAD_COST.wood;
 }
 
 export function clearTile(g, x, y) {
   const t = tileAt(g, x, y);
   const c = CLEAR[t];
-  if (!c) return { ok: false, reason: 'Rien à défricher ici' };
+  if (!c) return { ok: false, silent: true };
   if (!canAfford(g, c.cost)) return { ok: false, reason: `Il faut ${costText(c.cost)}` };
   pay(g, c.cost);
   gain(g, c.gain);
   g.tiles[idx(x, y)] = T.GRASS;
   g.cleared.push(idx(x, y));
   g.terrainVersion++;
-  rebuild(g);
   return { ok: true, gain: c.gain };
 }
 
-export function demolish(g, x, y) {
-  const b = buildingAt(g, x, y);
-  if (!b) {
-    if (roadAt(g, x, y)) {
-      g.roads[idx(x, y)] = 0;
-      rebuild(g);
-      return { ok: true, road: true };
-    }
-    return { ok: false, reason: 'Rien à démolir ici', silent: true };
-  }
+export function demolishBuilding(g, b) {
   if (b.type === 'townhall') return { ok: false, reason: 'L\'hôtel de ville ne peut pas être démoli' };
-  if (b.type === 'wonder') return { ok: false, reason: 'On ne démolit pas une merveille !' };
+  if (b.type === 'wonder' && !b.build) return { ok: false, reason: 'On ne démolit pas une merveille !' };
   const refund = {};
-  for (const [k, v] of Object.entries(def(b).cost || {})) refund[k] = Math.floor((v * b.level) / 2);
+  for (const [k, v] of Object.entries(def(b).cost || {})) refund[k] = Math.floor(v / 2);
   gain(g, refund);
   g.buildings = g.buildings.filter((o) => o !== b);
-  rebuild(g);
   return { ok: true, name: def(b).name };
 }
 
-export function upgradeCost(b) {
-  const cost = {};
-  for (const [k, v] of Object.entries(def(b).cost || {})) cost[k] = v * b.level;
-  cost.tools = 5 * b.level;
-  return cost;
-}
-export function canUpgrade(g, b) {
-  const d = def(b);
-  if (!d.produces || !d.workers || b.type === 'townhall') return { ok: false, hidden: true };
-  if (b.level >= MAX_LEVEL) return { ok: false, reason: 'Niveau maximum' };
-  if (g.era < 1) return { ok: false, reason: 'Améliorations à partir de l\'ère du Village' };
-  if (!canAfford(g, upgradeCost(b))) return { ok: false, reason: 'Ressources insuffisantes' };
-  return { ok: true };
-}
-export function upgrade(g, b) {
-  const c = canUpgrade(g, b);
-  if (!c.ok) return c;
-  pay(g, upgradeCost(b));
-  b.level++;
+// Démolit / défriche tout ce qui se trouve dans un rectangle de cases.
+export function applyArea(g, tool, x0, y0, x1, y1) {
+  const done = new Set();
+  let count = 0, error = null;
+  for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
+    for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
+      if (!inMap(x, y)) continue;
+      if (tool === 'clear') {
+        const r = clearTile(g, x, y);
+        if (r.ok) count++; else if (!r.silent && !error) error = r.reason;
+        continue;
+      }
+      const b = buildingAt(g, x, y);
+      if (b && !done.has(b)) {
+        done.add(b);
+        const r = demolishBuilding(g, b);
+        if (r.ok) count++; else if (!error) error = r.reason;
+        rebuild(g);
+      } else if (!b && g.roads[idx(x, y)]) {
+        g.roads[idx(x, y)] = 0;
+        count++;
+      }
+    }
+  }
   rebuild(g);
-  return { ok: true };
+  return { count, error };
 }
 
-export function togglePause(g, b) {
-  b.paused = !b.paused;
-  rebuild(g);
-}
+export function togglePause(g, b) { b.paused = !b.paused; rebuild(g); }
+export function toggleLock(g, b) { b.lock = !b.lock; }
 
-export function extinguish(g, b) {
-  if (!(b.fire > 0)) return false;
+export function bucketBrigade(g, b) {
+  if (!(b.fire > 0)) return { ok: false, reason: 'Ce bâtiment ne brûle pas' };
+  if (!b.cover.well) return { ok: false, reason: 'Aucun puits à proximité pour former une chaîne de seaux' };
+  if (g.gold < FIRE.bucketCost) return { ok: false, reason: 'Pas assez d\'or' };
+  g.gold -= FIRE.bucketCost;
   b.fire = 0;
   rebuild(g);
-  notify(g, `Feu éteint : ${def(b).name}. Bravo !`, 'good', 'good');
-  return true;
+  notify(g, `Incendie maîtrisé : ${def(b).name}.`, 'good', 'good');
+  return { ok: true };
 }
 
 // ---------- Ères ----------
@@ -368,11 +409,9 @@ export function extinguish(g, b) {
 export function eraStatus(g) {
   const next = ERAS[g.era + 1];
   if (!next) return null;
-  const [lvl, n] = next.houses;
-  const houses = g.buildings.filter((b) => b.type === 'house' && b.level >= lvl).length;
+  const [c, n] = next.need;
   const reqs = [
-    { text: `${next.pop} habitants`, ok: g.pop >= next.pop, cur: Math.floor(g.pop), max: next.pop },
-    { text: `${n} habitations de niveau ${lvl} (${HOUSE_LEVELS[lvl].name})`, ok: houses >= n, cur: houses, max: n },
+    { text: `${n} ${CLASSES[c].name.toLowerCase()}`, ok: g.cls[c] >= n, cur: Math.floor(g.cls[c]), max: n },
     { text: `Payer ${costText(next.cost)}`, ok: canAfford(g, next.cost) },
   ];
   return { next, reqs, ok: reqs.every((r) => r.ok) };
@@ -385,36 +424,33 @@ export function advanceEra(g) {
   g.era++;
   rebuild(g);
   g.pending.push({ type: 'era', era: g.era });
-  log(g, `Nouvelle ère : ${ERAS[g.era].name} !`, 'good');
+  log(g, `Nouvelle ère : ${ERAS[g.era].name}.`, 'good');
   checkQuests(g);
   return true;
 }
 
 // ---------- Commerce ----------
 
-// Sans marché, l'hôtel de ville fait un peu de commerce, mais à de mauvais prix.
-export const hasMarket = (g) => g.buildings.some((b) => b.type === 'market' && isWorking(b));
 const hasTrading = (g) => g.buildings.some((b) => b.type === 'trading' && isWorking(b));
-export const buyPrice = (g, k) => RES[k].price * g.prices[k] * (hasMarket(g) ? 1 : 1.5);
-export const price = buyPrice;
-export const sellRatio = (g) => (hasTrading(g) ? 0.85 : hasMarket(g) ? 0.7 : 0.5);
-export const tradeOpen = () => true;
+export const buyPrice = (g, k) => GOODS[k].price * g.prices[k] * (hasTrading(g) ? 1 : 1.5);
+export const sellPrice = (g, k) => GOODS[k].price * g.prices[k] * (hasTrading(g) ? 0.8 : 0.5);
+export const tradeHasPost = hasTrading;
 
 export function buy(g, k, n) {
   const cost = Math.ceil(buyPrice(g, k) * n);
-  if (g.res.gold < cost) return { ok: false, reason: 'Pas assez d\'or' };
-  if (g.res[k] + n > storage(g)) return { ok: false, reason: 'Stockage plein' };
-  g.res.gold -= cost;
-  g.res[k] += n;
-  g.prices[k] = Math.min(1.6, g.prices[k] * 1.02);
+  if (g.gold < cost) return { ok: false, reason: 'Pas assez d\'or' };
+  if (g.goods[k] + n > storage(g)) return { ok: false, reason: 'Stockage plein' };
+  g.gold -= cost;
+  g.goods[k] += n;
+  g.prices[k] = Math.min(1.8, g.prices[k] * 1.03);
   return { ok: true };
 }
 
 export function sell(g, k, n) {
-  if (g.res[k] < n) return { ok: false, reason: 'Pas assez à vendre' };
-  g.res[k] -= n;
-  g.res.gold += Math.floor(RES[k].price * g.prices[k] * n * sellRatio(g));
-  g.prices[k] = Math.max(0.5, g.prices[k] * 0.98);
+  if (g.goods[k] < n) return { ok: false, reason: 'Pas assez à vendre' };
+  g.goods[k] -= n;
+  g.gold += Math.floor(sellPrice(g, k) * n);
+  g.prices[k] = Math.max(0.5, g.prices[k] * 0.97);
   return { ok: true };
 }
 
@@ -423,8 +459,8 @@ export function sell(g, k, n) {
 function questHelpers(g) {
   return {
     count: (type) => g.buildings.filter((b) => b.type === type).length,
-    connectedCount: () => g.buildings.filter((b) => b.type !== 'townhall' && b.connected).length,
-    housesAtLeast: (L) => g.buildings.filter((b) => b.type === 'house' && b.level >= L).length,
+    done: (type) => g.buildings.filter((b) => b.type === type && !b.build).length,
+    cls: (c) => Math.floor(g.cls[c]),
   };
 }
 
@@ -441,107 +477,133 @@ export function checkQuests(g) {
     if (!p || p.cur < p.max) return;
     gain(g, p.q.reward);
     g.quest++;
-    notify(g, `🎯 Objectif réussi : ${p.q.text} (+${costText(p.q.reward)})`, 'good', 'quest');
+    notify(g, `Objectif atteint : ${p.q.text}. Récompense : ${costText(p.q.reward)}.`, 'good', 'quest');
+  }
+}
+
+// ---------- Incendies ----------
+
+function fireRisk(b) {
+  const d = def(b);
+  if (isHouse(b)) return [1, 0.8, 0.6, 0.5][b.level - 1];
+  return d.fire ?? 1;
+}
+
+function ignite(g, b, spread) {
+  b.fire = 1;
+  g.stats.fires++;
+  notify(g, spread ? `Le feu se propage : ${def(b).name}.` : `Incendie : ${def(b).name} !`, 'danger', 'alarm', b);
+}
+
+function updateFires(g) {
+  if (g.day < FIRE.startDay) return;
+  const burning = g.buildings.filter((b) => b.fire > 0);
+  // Propagation et extinction
+  for (const b of burning) {
+    b.fire++;
+    if (b.cover?.fire && b.fire > FIRE.stationDays) {
+      b.fire = 0;
+      notify(g, `Les pompiers ont éteint l'incendie : ${def(b).name}.`, 'good', 'good');
+      continue;
+    }
+    for (const o of g.buildings) {
+      if (o.fire > 0 || o === b || fireRisk(o) <= 0 || o.cover?.fire || o.build) continue;
+      if (footprintDist(o, b) <= 1 && Math.random() < FIRE.spreadChance) ignite(g, o, true);
+    }
+    if (b.fire > FIRE.burnDays) {
+      g.buildings = g.buildings.filter((o) => o !== b);
+      const s = def(b).size;
+      for (let dy = 0; dy < s; dy++) {
+        for (let dx = 0; dx < s; dx++) g.buildings.push({ id: g.nextId++, type: 'ruins', x: b.x + dx, y: b.y + dy, level: 1 });
+      }
+      notify(g, `Détruit par le feu : ${def(b).name}.`, 'danger', 'bad');
+    }
+  }
+  // Nouveaux départs de feu
+  for (const b of g.buildings) {
+    if (b.fire > 0 || b.build || !b.cover || b.cover.fire) continue;
+    const risk = fireRisk(b);
+    if (risk <= 0) continue;
+    if (Math.random() < FIRE.baseRisk * risk * (b.cover.well ? FIRE.wellFactor : 1)) ignite(g, b, false);
   }
 }
 
 // ---------- Événements ----------
 
-const FIREPROOF = ['garden', 'park', 'statue', 'fountain', 'well', 'townhall', 'wonder'];
-
 const EVENTS = [
   {
-    w: 3,
-    can: (g) => g.buildings.some((b) => !FIREPROOF.includes(b.type) && !b.cover.fire && !(b.fire > 0)),
-    run(g) {
-      const list = g.buildings.filter((b) => !FIREPROOF.includes(b.type) && !b.cover.fire && !(b.fire > 0));
-      const b = list[Math.floor(Math.random() * list.length)];
-      b.fire = 8;
-      g.stats.fires++;
-      notify(g, `🔥 Incendie : ${def(b).name} ! Touchez-le vite pour l'éteindre.`, 'danger', 'alarm', b);
-    },
-  },
-  {
     w: 2,
-    can: (g) => g.res.gold >= 30,
+    can: (g) => g.era >= 1 && g.gold >= 100,
     run(g) {
       const th = g.buildings.find((b) => b.type === 'townhall');
       if (th.cover.guard) {
-        g.res.gold += 15;
-        notify(g, '🗡️ Des bandits ont été repoussés par la garde (+15 🪙).', 'good', 'good');
+        g.gold += 30;
+        notify(g, 'Des bandits ont été repoussés par la garde (+30 or).', 'good', 'good');
       } else {
-        const lost = Math.floor(g.res.gold * 0.25);
-        g.res.gold -= lost;
-        notify(g, `🗡️ Des bandits ont pillé le trésor : −${lost} 🪙. Une tour de garde près de l'hôtel de ville les arrêterait.`, 'danger', 'bad');
+        const lost = Math.floor(g.gold * 0.2);
+        g.gold -= lost;
+        notify(g, `Des bandits ont pillé le trésor : −${lost} or. Une tour de guet près de l'hôtel de ville les arrêterait.`, 'danger', 'bad');
       }
     },
   },
   {
     w: 2,
     can: (g) => [1, 2].includes(season(g)) && g.buildings.some((b) => b.type === 'farm'),
-    run(g) { gain(g, { food: 40 }); notify(g, '🌾 Récolte exceptionnelle : +40 🍞 !', 'good', 'good'); },
+    run(g) { gain(g, { wheat: 30 }); notify(g, 'Récolte exceptionnelle : +30 blé.', 'good', 'good'); },
   },
   {
     w: 2,
-    can: (g) => housing(g) - g.pop >= 3,
+    can: (g) => g.buildings.some((b) => isHouse(b) && b.level === 1 && b.res < capOf(b) - 1 && b.connected),
     run(g) {
-      const n = Math.min(5, Math.floor(housing(g) - g.pop));
-      g.pop += n;
-      notify(g, `🧳 ${n} migrants s'installent dans votre cité !`, 'good', 'good');
+      let n = 0;
+      for (const b of g.buildings) {
+        if (n >= 8 || !isHouse(b) || b.level !== 1 || !b.connected) continue;
+        const add = Math.min(2, capOf(b) - b.res);
+        b.res += add;
+        n += add;
+      }
+      notify(g, `${Math.round(n)} migrants s'installent dans le hameau.`, 'good', 'good');
     },
   },
   {
     w: 3,
-    can: (g) => RES_KEYS.some((k) => k !== 'gold' && g.res[k] >= 40),
+    can: (g) => GOOD_KEYS.some((k) => g.goods[k] >= 40),
     run(g) {
-      const giveable = RES_KEYS.filter((k) => k !== 'gold' && g.res[k] >= 40);
+      const giveable = GOOD_KEYS.filter((k) => g.goods[k] >= 40);
       const give = giveable[Math.floor(Math.random() * giveable.length)];
-      const others = RES_KEYS.filter((k) => k !== give && (k !== 'tools' || g.era >= 1) && (k !== 'iron' || g.era >= 1));
-      const get = others[Math.floor(Math.random() * others.length)];
+      const known = GOOD_KEYS.filter((k) => k !== give && (g.goods[k] > 0 || ['wood', 'planks', 'stone', 'fish'].includes(k)));
+      const get = known[Math.floor(Math.random() * known.length)];
       const n = 20 + Math.floor(Math.random() * 3) * 10;
-      const value = n * RES[give].price * 1.4;
-      const m = Math.max(1, Math.round(value / (RES[get]?.price || 1)));
+      const m = Math.max(1, Math.round((n * GOODS[give].price * 1.4) / GOODS[get].price));
       g.pending.push({ type: 'caravan', give: { k: give, n }, get: { k: get, n: m } });
-      log(g, '🐪 Une caravane marchande propose un échange.', '');
-      g.notes.push({ text: '🐪 Une caravane marchande est arrivée !', kind: '', sound: 'quest' });
+      log(g, 'Une caravane marchande propose un échange.');
+      g.notes.push({ text: 'Une caravane marchande est arrivée.', kind: '', sound: 'quest' });
     },
   },
   {
     w: 1,
-    can: (g) => g.buildings.some((b) => b.type === 'mine'),
-    run(g) { gain(g, { iron: 40 }); notify(g, '💎 Un filon a été découvert : +40 🔩 !', 'good', 'good'); },
-  },
-  {
-    w: 1,
-    can: (g) => g.era >= 1 && g.pop >= 30,
+    can: (g) => g.era >= 1 && population(g) >= 100,
     run(g) {
-      const houses = g.buildings.filter((b) => b.type === 'house');
-      const covered = houses.filter((b) => b.cover.well).length / Math.max(1, houses.length);
-      if (covered >= 0.8) {
-        notify(g, '🦠 Une épidémie a été évitée grâce à l\'eau potable.', 'good', 'good');
-      } else {
-        const lost = Math.floor(g.pop * 0.15);
-        g.pop -= lost;
-        notify(g, `🦠 Épidémie : ${lost} habitants sont partis. Plus de puits limiterait les dégâts.`, 'danger', 'bad');
+      let lost = 0;
+      for (const b of g.buildings) {
+        if (!isHouse(b) || b.cover.well) continue;
+        const l = Math.floor(b.res * 0.4);
+        b.res -= l;
+        lost += l;
       }
+      notify(g, lost ? `Épidémie : ${lost} habitants sans eau potable sont partis.` : 'Une épidémie a été évitée grâce aux puits.', lost ? 'danger' : 'good', lost ? 'bad' : 'good');
     },
   },
   {
     w: 1,
-    can: () => true,
-    run(g) { g.happiness = Math.min(100, g.happiness + 10); notify(g, '🎉 Fête au village : le bonheur grimpe !', 'good', 'good'); },
-  },
-  {
-    w: 1,
-    can: (g) => season(g) === 3 && !g.harshWinter,
-    run(g) { g.harshWinter = true; notify(g, '🥶 Hiver rigoureux : le chauffage consomme deux fois plus de bois.', 'danger', 'bad'); },
+    can: (g) => g.buildings.some((b) => b.type === 'fisher'),
+    run(g) { gain(g, { fish: 25 }); notify(g, 'Banc de poissons exceptionnel : +25 poisson.', 'good', 'good'); },
   },
 ];
 
 function rollEvent(g) {
-  if (g.day < 25) return;
-  const trading = g.buildings.some((b) => b.type === 'trading' && isWorking(b));
-  if (Math.random() > (trading ? 0.07 : 0.05)) return;
+  if (g.day < 40) return;
+  if (Math.random() > (hasTrading(g) ? 0.035 : 0.025)) return;
   const list = EVENTS.filter((e) => e.can(g));
   let r = Math.random() * list.reduce((n, e) => n + e.w, 0);
   for (const e of list) {
@@ -551,11 +613,10 @@ function rollEvent(g) {
 }
 
 export function acceptOffer(g, offer) {
-  if (g.res[offer.give.k] < offer.give.n) return { ok: false, reason: 'Vous n\'avez plus assez de ressources' };
-  g.res[offer.give.k] -= offer.give.n;
-  if (offer.get.k === 'gold') g.res.gold += offer.get.n;
-  else gain(g, { [offer.get.k]: offer.get.n });
-  log(g, `🐪 Échange conclu : ${offer.give.n} ${RES[offer.give.k].icon} contre ${offer.get.n} ${RES[offer.get.k].icon}.`, 'good');
+  if (g.goods[offer.give.k] < offer.give.n) return { ok: false, reason: 'Vous n\'avez plus assez de marchandises' };
+  g.goods[offer.give.k] -= offer.give.n;
+  gain(g, { [offer.get.k]: offer.get.n });
+  log(g, `Échange conclu : ${offer.give.n} ${resName(offer.give.k)} contre ${offer.get.n} ${resName(offer.get.k)}.`, 'good');
   return { ok: true };
 }
 
@@ -565,131 +626,141 @@ export function step(g) {
   const prevSeason = season(g);
   g.day++;
   const s = season(g);
-  if (s !== prevSeason && s === 0) g.harshWinter = false;
-  if (s !== prevSeason) notify(g, `${SEASONS[s].icon} C'est ${s === 0 ? 'le ' : 'l\''}${SEASONS[s].name.toLowerCase()}.`, '', 'season');
+  if (s !== prevSeason) notify(g, `Début de ${s === 0 ? 'printemps' : s === 1 ? 'l\'été' : s === 2 ? 'l\'automne' : 'l\'hiver'}.`, '', 'season');
 
+  countClasses(g);
   assignWorkers(g);
   computeCoverage(g);
 
-  const before = { ...g.res };
-  const happyF = 0.6 + (g.happiness / 100) * 0.7;
+  const prod = {}, use = {};
+  const add = (o, k, v) => { o[k] = (o[k] || 0) + v; };
+  const cap = storage(g);
 
   // Production
   for (const b of g.buildings) {
     const d = def(b);
     b.output = null;
     b.starved = false;
+    b.eff = 0;
     if (!d.produces || !isWorking(b)) continue;
-    let eff = (b.assigned / workersNeeded(b)) * happyF * LEVEL_OUTPUT[b.level];
+    let eff = b.assigned / d.workers[1];
     if (d.seasonal) eff *= d.seasonal[s];
     if (d.fertile) {
       let n = 0;
       for (let dy = 0; dy < d.size; dy++) for (let dx = 0; dx < d.size; dx++) if (g.tiles[idx(b.x + dx, b.y + dy)] === T.FERTILE) n++;
       eff *= 1 + (d.fertile - 1) * (n / (d.size * d.size));
     }
-    if (eff <= 0) continue;
+    if (g.broke) eff *= 0.5;
+    // Pas la peine de produire si l'entrepôt est plein
+    const outs = Object.keys(d.produces);
+    b.full = outs.every((k) => k !== 'gold' && g.goods[k] >= cap - 0.01);
+    if (b.full || eff <= 0) continue;
     if (d.consumes) {
       let ratio = 1;
-      for (const [k, v] of Object.entries(d.consumes)) ratio = Math.min(ratio, g.res[k] / (v * eff));
+      for (const [k, v] of Object.entries(d.consumes)) ratio = Math.min(ratio, g.goods[k] / (v * eff));
       ratio = Math.max(0, Math.min(1, ratio));
-      for (const [k, v] of Object.entries(d.consumes)) g.res[k] -= v * eff * ratio;
-      b.starved = ratio < 1;
+      for (const [k, v] of Object.entries(d.consumes)) { g.goods[k] -= v * eff * ratio; add(use, k, v * eff * ratio); }
+      b.starved = ratio < 0.99;
       eff *= ratio;
     }
+    b.eff = eff;
     if (eff <= 0) continue;
     b.output = {};
     for (const [k, v] of Object.entries(d.produces)) {
-      g.res[k] += v * eff;
+      if (k === 'gold') { g.gold += v * eff; g.fin.other = (g.fin.other || 0) + v * eff; }
+      else g.goods[k] = Math.min(cap, g.goods[k] + v * eff);
+      add(prod, k, v * eff);
       b.output[k] = v * eff;
     }
   }
 
-  // Habitants : nourriture, chauffage, outils, impôts
-  const cap = housing(g);
-  const foodNeed = g.pop * FOOD_PER_PERSON;
-  g.starving = g.res.food < foodNeed;
-  g.res.food = Math.max(0, g.res.food - foodNeed);
-
-  g.cold = false;
-  if (s === 3) {
-    const woodNeed = g.pop * WINTER_WOOD_PER_PERSON * (g.harshWinter ? 2 : 1);
-    g.cold = g.res.wood < woodNeed;
-    g.res.wood = Math.max(0, g.res.wood - woodNeed);
+  // Consommation des habitants : on calcule la demande totale par marchandise,
+  // puis chaque classe reçoit la même part de ce qui est disponible.
+  const demand = {};
+  CLASSES.forEach((C, c) => {
+    for (const n of C.needs) if (n.good) add(demand, n.good, g.cls[c] * n.rate);
+  });
+  const ratio = {};
+  for (const [k, v] of Object.entries(demand)) {
+    ratio[k] = v > 0 ? Math.min(1, g.goods[k] / v) : 1;
+    g.goods[k] -= v * ratio[k];
+    add(use, k, v * ratio[k]);
   }
-
-  const occupancy = cap > 0 ? Math.min(1, g.pop / cap) : 0;
-  let taxBase = 0, villaPop = 0;
-  for (const b of g.buildings) {
-    const c = capOf(b) * occupancy;
-    if (!c) continue;
-    taxBase += c * (b.type === 'house' ? HOUSE_LEVELS[b.level].tax : 0.04);
-    if (b.type === 'house' && b.level === 4) villaPop += c;
+  g.supply = CLASSES.map((C) => {
+    const o = {};
+    for (const n of C.needs) if (n.good) o[n.good] = ratio[n.good] ?? 1;
+    return o;
+  });
+  // Les paysans mangent du poisson, ou du pain s'il en reste.
+  const F = g.cls[0] * CLASSES[0].needs[0].rate;
+  if (F > 0) {
+    const fish = Math.min(g.goods.fish, F);
+    const bread = Math.min(g.goods.bread, F - fish);
+    g.goods.fish -= fish;
+    g.goods.bread -= bread;
+    add(use, 'fish', fish);
+    add(use, 'bread', bread);
+    g.supply[0].food = (fish + bread) / F;
+    add(demand, 'fish', F);
+  } else {
+    g.supply[0].food = g.goods.fish + g.goods.bread > 0 ? 1 : 0;
   }
-  g.res.gold += taxBase * TAXES[g.tax].mult;
-  g.res.tools = Math.max(0, g.res.tools - villaPop * 0.02);
-  g.upkeep = upkeepOf(g);
-  g.res.gold -= g.upkeep;
-  g.broke = g.res.gold < 0;
-  if (g.broke) g.res.gold = 0;
+  g.flow = { prod, use, demand };
 
-  // Stockage limité
-  const store = storage(g);
-  for (const k of RES_KEYS) if (k !== 'gold') g.res[k] = Math.min(g.res[k], store);
-  g.lastGain = Object.fromEntries(RES_KEYS.map((k) => [k, g.res[k] - before[k]]));
-
-  // Bonheur
-  const houses = g.buildings.filter((b) => b.type === 'house');
-  const parts = [];
-  let target = 50;
-  const add = (label, v) => { if (v) { parts.push({ label, v: Math.round(v) }); target += v; } };
-  add(g.starving ? 'Famine' : 'Nourriture suffisante', g.starving ? -30 : 10);
-  if (houses.length) {
-    const services = ['well', 'chapel', 'market', 'tavern', 'school'];
-    const avg = houses.reduce((n, b) => n + services.filter((t) => b.cover[t]).length / services.length, 0) / houses.length;
-    add('Services', avg * 20);
-    const decor = houses.reduce((n, b) => n + Math.min(b.decor || 0, 4) / 4, 0) / houses.length;
-    add('Beauté', decor * 10);
-  }
-  add(`Impôts ${TAXES[g.tax].name.toLowerCase()}s`, TAXES[g.tax].happy);
-  if (g.workforce > 5 && g.idle > g.workforce * 0.3) add('Chômage', -8);
-  if (g.cold) add('Froid (manque de bois)', -15);
-  if (g.broke) add('Caisses vides (entretien impayé)', -10);
-  const burning = g.buildings.filter((b) => b.fire > 0).length;
-  if (burning) add('Incendies', -5 * burning);
-  target = Math.max(0, Math.min(100, target));
-  g.happyTarget = target;
-  g.happyParts = parts;
-  g.happiness += Math.max(-3, Math.min(3, target - g.happiness));
-
-  // Population
-  const free = cap - g.pop;
-  if (g.starving) g.pop -= 0.3;
-  else if (g.happiness < 25) g.pop -= 0.15;
-  else if (free > 0 && g.res.food >= 5) g.pop += Math.min(free, (0.15 + free * 0.03) * (g.happiness / 70));
-  g.pop = Math.max(2, Math.min(g.pop, Math.max(cap, 2)));
-  g.stats.maxPop = Math.max(g.stats.maxPop, g.pop);
-
-  // Évolution des habitations (une fois tous les 3 jours par maison)
-  for (const b of houses) {
-    if ((g.day + b.id) % 3) continue;
-    const t = houseTarget(g, b);
-    if (t > b.level) b.level++;
-    else if (t < b.level) b.level--;
-  }
-
-  // Incendies
-  for (const b of [...g.buildings]) {
-    if (!(b.fire > 0)) continue;
-    b.fire--;
-    if (b.fire === 0) {
-      g.buildings = g.buildings.filter((o) => o !== b);
-      notify(g, `🔥 ${def(b).name} a brûlé entièrement.`, 'danger', 'bad');
+  // Pénuries
+  for (const [k, v] of Object.entries(demand)) {
+    const r = k === 'fish' ? g.supply[0].food : ratio[k];
+    if (v > 0.2 && r < 0.6 && g.day - (g.alerts[k] ?? -999) > 25) {
+      g.alerts[k] = g.day;
+      notify(g, k === 'fish' ? 'Pénurie de nourriture : les paysans manquent de poisson.' : `Pénurie de ${GOODS[k].name.toLowerCase()} : vos habitants en manquent.`, 'warn', 'bad');
     }
   }
 
+  // Habitations : satisfaction, croissance, impôts, évolution
+  let taxes = 0, satSum = 0, resSum = 0;
+  for (const b of g.buildings) {
+    if (!isHouse(b)) continue;
+    const C = CLASSES[b.level - 1];
+    const sat = b.connected ? houseSat(g, b) : 0;
+    b.sat = sat;
+    const capH = C.cap;
+    if (!b.connected) b.res = Math.max(0, (b.res || 0) - 0.2);
+    else if (sat >= 0.5) b.res = Math.min(capH, (b.res || 0) + 0.12 + 0.18 * sat);
+    else if (sat < 0.35) b.res = Math.max(0, b.res - 0.15);
+    taxes += b.res * C.tax * TAXES[g.tax].mult * (0.5 + 0.5 * sat);
+    satSum += sat * b.res;
+    resSum += b.res;
+    if (!b.lock && (g.day + b.id) % 5 === 0 && upgradeStatus(g, b).ok) upgradeHouse(g, b);
+  }
+  g.happiness = resSum ? (satSum / resSum) * 100 : 60;
+
+  // Finances
+  const upkeep = g.buildings.reduce((n, b) => n + upkeepOf(b), 0);
+  g.gold += taxes - upkeep;
+  g.fin = { taxes, upkeep, other: g.fin.other || 0 };
+  g.lastFin = { ...g.fin };
+  g.fin.other = 0;
+  g.broke = g.gold < 0;
+  if (g.broke) g.gold = 0;
+
+  // Chantiers
+  for (const b of g.buildings) {
+    if (!b.build) continue;
+    b.build--;
+    if (b.build === 0) {
+      notify(g, `Chantier terminé : ${def(b).name}.`, 'good', 'quest', b);
+      if (b.type === 'wonder') {
+        g.won = true;
+        g.pending.push({ type: 'victory' });
+      }
+    }
+  }
+
+  updateFires(g);
+
   // Prix du marché qui bougent un peu
-  for (const k of Object.keys(g.prices)) {
-    g.prices[k] = Math.max(0.5, Math.min(1.6, g.prices[k] * (1 + (Math.random() - 0.5) * 0.04)));
+  for (const k of GOOD_KEYS) {
+    g.prices[k] = Math.max(0.5, Math.min(1.8, g.prices[k] * (1 + (Math.random() - 0.5) * 0.03)));
     g.prices[k] += (1 - g.prices[k]) * 0.02;
   }
 
@@ -697,9 +768,11 @@ export function step(g) {
   rebuild(g);
   checkQuests(g);
 
+  const pop = population(g);
+  g.stats.maxPop = Math.max(g.stats.maxPop, pop);
   if (g.day % 5 === 0) {
-    g.history.push({ d: g.day, pop: Math.floor(g.pop), gold: Math.floor(g.res.gold), food: Math.floor(g.res.food), happy: Math.round(g.happiness) });
-    if (g.history.length > 240) g.history.shift();
+    g.history.push({ d: g.day, pop: Math.floor(pop), gold: Math.floor(g.gold), happy: Math.round(g.happiness), cls: g.cls.map(Math.floor) });
+    if (g.history.length > 300) g.history.shift();
   }
 }
 
@@ -707,21 +780,21 @@ export function step(g) {
 
 export function serialize(g) {
   return JSON.stringify({
-    v: 2, seed: g.seed, cleared: g.cleared, roads: [...g.roads.keys()].filter((i) => g.roads[i]),
-    buildings: g.buildings.map(({ id, type, x, y, level, paused, fire }) => ({ id, type, x, y, level, paused, fire })),
-    res: g.res, pop: g.pop, day: g.day, era: g.era, tax: g.tax, happiness: g.happiness, quest: g.quest,
-    log: g.log.slice(0, 40), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats,
-    harshWinter: g.harshWinter,
+    v: 3, seed: g.seed, cleared: g.cleared, roads: [...g.roads.keys()].filter((i) => g.roads[i]),
+    buildings: g.buildings.map(({ id, type, x, y, level, res, lock, paused, fire, build }) => ({ id, type, x, y, level, res, lock, paused, fire, build })),
+    goods: g.goods, gold: g.gold, day: g.day, era: g.era, tax: g.tax, quest: g.quest,
+    log: g.log.slice(0, 50), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats, alerts: g.alerts,
   });
 }
 
 export function deserialize(text) {
   const d = JSON.parse(text);
-  if (!d || d.v !== 2) return null;
+  if (!d || d.v !== 3) return null;
   const g = { ...d, tiles: generateMap(d.seed), roads: new Uint8Array(MAP * MAP) };
   for (const i of d.cleared) g.tiles[i] = T.GRASS;
   for (const i of d.roads) g.roads[i] = 1;
-  for (const k of RES_KEYS) g.res[k] ??= 0;
+  for (const k of GOOD_KEYS) g.goods[k] ??= 0;
+  g.alerts ??= {};
   init(g);
   return g;
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#1b2b20">
+  <meta name="theme-color" content="#151d18">
   <meta name="description" content="Bâtissez votre cité, du hameau à la Grande Cathédrale.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,45 +12,60 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <canvas id="game"></canvas>
 
   <header id="topbar">
-    <div id="resources"></div>
-    <div class="pill" id="pop" title="Habitants"><span class="ico">👥</span><span class="val"></span></div>
-    <div class="pill" id="happy" title="Bonheur"><span class="ico">🙂</span><span class="val"></span></div>
-    <div class="spacer"></div>
-    <div class="pill era" id="era-pill" title="Ère actuelle"><span class="ico">🏛️</span><span id="era-name"></span></div>
-    <span id="date"></span>
-    <div class="speed">
-      <button data-speed="0" title="Pause (espace)">⏸</button>
-      <button data-speed="1" class="active" title="Vitesse normale">1×</button>
-      <button data-speed="2" title="Vitesse ×2">2×</button>
-      <button data-speed="4" title="Vitesse ×4">4×</button>
+    <div class="tb-group" id="tb-goods" title="Marchandises"></div>
+    <div class="tb-sep"></div>
+    <div class="tb-group" id="tb-pop" title="Population"></div>
+    <div class="tb-spacer"></div>
+    <div class="tb-item" id="tb-gold"></div>
+    <div class="tb-item" id="tb-happy"></div>
+    <div class="tb-item era" id="tb-era"><span id="era-name"></span></div>
+    <div class="tb-item" id="tb-date"></div>
+    <div class="speed" id="speed">
+      <button data-speed="0" title="Pause (espace)"></button>
+      <button data-speed="1" class="active" title="Vitesse normale"></button>
+      <button data-speed="2" title="Vitesse ×2"></button>
+      <button data-speed="4" title="Vitesse ×4"></button>
     </div>
   </header>
 
   <div id="quest" class="card" title="Voir les objectifs"></div>
 
   <div id="sidebtns">
-    <button data-panel="quests" title="Objectifs">🎯</button>
-    <button data-panel="era" id="btn-era" title="Ères">⬆️</button>
-    <button data-panel="stats" title="Statistiques et impôts">📊</button>
-    <button data-panel="trade" title="Commerce">⚖️</button>
-    <button data-panel="log" title="Journal">📜</button>
-    <button data-panel="options" title="Options">⚙️</button>
+    <button data-panel="quests" data-icon="target" title="Objectifs"></button>
+    <button data-panel="era" data-icon="crown" title="Ères"></button>
+    <button data-panel="population" data-icon="users" title="Population et impôts"></button>
+    <button data-panel="production" data-icon="factory" title="Marchandises"></button>
+    <button data-panel="finances" data-icon="landmark" title="Finances"></button>
+    <button data-panel="trade" data-icon="scale" title="Commerce"></button>
+    <button data-panel="log" data-icon="scroll-text" title="Journal"></button>
+    <button id="btn-overlay" title="Calques de vue"></button>
+    <button data-panel="options" data-icon="settings" title="Options"></button>
   </div>
+  <div id="overlay-menu" hidden></div>
 
   <canvas id="minimap" title="Mini-carte : touchez pour vous déplacer"></canvas>
 
   <aside id="panel" hidden>
-    <button class="close" aria-label="Fermer">✕</button>
+    <button class="close" aria-label="Fermer"></button>
     <div class="content"></div>
   </aside>
 
+  <div id="tooltip" hidden></div>
   <div id="toasts"></div>
+
+  <div id="toolchip" hidden>
+    <span class="label"></span>
+    <button title="Annuler (Échap ou clic droit)">Annuler</button>
+  </div>
 
   <nav id="toolbar">
     <div id="cats"></div>

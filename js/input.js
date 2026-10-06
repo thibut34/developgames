@@ -1,7 +1,7 @@
 // Souris, tactile et clavier.
-// - glisser : déplace la carte (ou trace des routes / démolit / défriche avec ces outils)
+// - glisser : déplace la carte, ou trace un geste (route, zone) avec ces outils
+// - clic droit : annule l'outil (glisser avec le clic droit déplace la carte)
 // - molette / pincer à deux doigts : zoom
-// - toucher / cliquer : agir sur la case
 import { WORLD_W, WORLD_H, worldToTile } from './iso.js';
 
 export const MIN_ZOOM = 0.35, MAX_ZOOM = 2.2;
@@ -21,11 +21,14 @@ export function zoomAt(cam, canvas, p, factor) {
   clampCamera(cam, canvas);
 }
 
-// paintTool() : true si l'outil courant « peint » en glissant (routes, démolir, défricher).
-export function attachInput(canvas, cam, { onTap, onHover, onPaint, paintTool, onPaintEnd }) {
+// handlers :
+//   onTap(case), onHover(case, typeDePointeur), onCancel()
+//   gesture() : 'road' | 'area' | null selon l'outil courant
+//   onGesture(début, fin, terminé) : appelé pendant et à la fin d'un geste
+export function attachInput(canvas, cam, h) {
   const pointers = new Map();
-  let start = null, mode = null; // mode : null | 'pan' | 'paint' | 'pinch'
-  let lastPaint = null;
+  let start = null, mode = null, button = 0; // mode : null | 'pan' | 'gesture' | 'pinch'
+  let gStart = null;
 
   const local = (e) => {
     const r = canvas.getBoundingClientRect();
@@ -36,18 +39,9 @@ export function attachInput(canvas, cam, { onTap, onHover, onPaint, paintTool, o
     const [a, b] = [...pointers.values()];
     return { dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   };
-  const paintAt = (p) => {
-    const t = toTile(p);
-    if (lastPaint && lastPaint.x === t.x && lastPaint.y === t.y) return;
-    // Remplit les cases sautées si le doigt va vite.
-    if (lastPaint) {
-      const steps = Math.max(Math.abs(t.x - lastPaint.x), Math.abs(t.y - lastPaint.y));
-      for (let i = 1; i < steps; i++) {
-        onPaint({ x: Math.round(lastPaint.x + ((t.x - lastPaint.x) * i) / steps), y: Math.round(lastPaint.y + ((t.y - lastPaint.y) * i) / steps) });
-      }
-    }
-    onPaint(t);
-    lastPaint = t;
+  const cancelGesture = () => {
+    if (mode === 'gesture') h.onGesture(gStart, gStart, false, true);
+    gStart = null;
   };
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -56,13 +50,11 @@ export function attachInput(canvas, cam, { onTap, onHover, onPaint, paintTool, o
     pointers.set(e.pointerId, p);
     if (pointers.size === 1) {
       start = p;
-      mode = null;
-      lastPaint = null;
-      onHover(toTile(p), e.pointerType);
-      // Clic droit ou molette : toujours déplacer la carte
-      if (e.button === 1 || e.button === 2) mode = 'pan';
+      button = e.button;
+      mode = e.button === 1 || e.button === 2 ? 'pan' : null;
+      h.onHover(toTile(p), e.pointerType);
     } else {
-      if (mode === 'paint') onPaintEnd();
+      cancelGesture();
       mode = 'pinch';
     }
   });
@@ -70,21 +62,22 @@ export function attachInput(canvas, cam, { onTap, onHover, onPaint, paintTool, o
   canvas.addEventListener('pointermove', (e) => {
     const p = local(e);
     const prev = pointers.get(e.pointerId);
-    if (!prev) { onHover(toTile(p), e.pointerType); return; }
+    if (!prev) { h.onHover(toTile(p), e.pointerType); return; }
 
     if (pointers.size === 1) {
-      if (!mode && Math.hypot(p.x - start.x, p.y - start.y) > DRAG_THRESHOLD) {
-        mode = paintTool() ? 'paint' : 'pan';
-        if (mode === 'paint') paintAt(start);
+      const moved = Math.hypot(p.x - start.x, p.y - start.y) > DRAG_THRESHOLD;
+      if (!mode && moved) {
+        mode = h.gesture() ? 'gesture' : 'pan';
+        if (mode === 'gesture') gStart = toTile(start);
       }
-      if (mode === 'pan') {
+      if (mode === 'pan' && (button !== 2 || moved)) {
         cam.x -= (p.x - prev.x) / cam.zoom;
         cam.y -= (p.y - prev.y) / cam.zoom;
         clampCamera(cam, canvas);
-      } else if (mode === 'paint') {
-        paintAt(p);
+      } else if (mode === 'gesture') {
+        h.onGesture(gStart, toTile(p), false);
       }
-      onHover(toTile(p), e.pointerType);
+      h.onHover(toTile(p), e.pointerType);
       pointers.set(e.pointerId, p);
     } else if (pointers.size === 2) {
       const before = pinch();
@@ -97,16 +90,25 @@ export function attachInput(canvas, cam, { onTap, onHover, onPaint, paintTool, o
     }
   });
 
-  const end = (e, tap) => {
+  const end = (e, ok) => {
     if (!pointers.has(e.pointerId)) return;
-    if (tap && pointers.size === 1 && !mode && e.button !== 2) onTap(toTile(local(e)));
-    if (pointers.size === 1 && mode === 'paint') onPaintEnd();
+    const p = local(e);
+    if (pointers.size === 1) {
+      const moved = Math.hypot(p.x - start.x, p.y - start.y) > DRAG_THRESHOLD;
+      if (ok && button === 2 && !moved) h.onCancel();
+      else if (ok && !mode) h.onTap(toTile(p));
+      else if (mode === 'gesture') {
+        if (ok) h.onGesture(gStart, toTile(p), true);
+        else cancelGesture();
+        gStart = null;
+      }
+    }
     pointers.delete(e.pointerId);
     if (pointers.size === 0) mode = null;
   };
   canvas.addEventListener('pointerup', (e) => end(e, true));
   canvas.addEventListener('pointercancel', (e) => end(e, false));
-  canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !pointers.size) onHover(null, 'mouse'); });
+  canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !pointers.size) h.onHover(null, 'mouse'); });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   canvas.addEventListener('wheel', (e) => {
