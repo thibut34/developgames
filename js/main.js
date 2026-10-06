@@ -527,6 +527,7 @@ afterChange();
 title.show();
 requestAnimationFrame(frame);
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+// Mode hors ligne uniquement sur notre propre site (pas dans le cadre d'itch.io ou d'un autre portail).
+if ('serviceWorker' in navigator && location.hostname.endsWith('github.io')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

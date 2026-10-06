@@ -1,0 +1,8 @@
+/* Police Inter (SIL Open Font License, https://rsms.me/inter), intégrée pour fonctionner hors ligne. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(inter.woff2) format('woff2');
+}
