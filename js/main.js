@@ -537,7 +537,7 @@ function watchReward(n) {
 }
 
 const rewardBtn = document.getElementById('btn-reward');
-if (platform.name === 'crazygames') {
+if (platform.name === 'crazygames' && platform.ads) {
   rewardBtn.hidden = false;
   rewardBtn.innerHTML = icon('gift');
   rewardBtn.title = L('Bonus : or contre une publicité', 'Bonus: gold for watching an ad');

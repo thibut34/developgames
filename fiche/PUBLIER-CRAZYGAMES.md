@@ -20,7 +20,7 @@ Tout est prêt : il te reste seulement à créer ton compte et à remplir le for
 7. **Options du formulaire** :
    - SDK : **oui**, HTML5 SDK v3.
    - Data Module : **« Yes, using the Data Module »** (les sauvegardes suivent le compte du joueur).
-   - Publicités : **rewarded ads uniquement** (aucune publicité imposée, voir plus bas).
+   - Publicités : aucune pour l'instant (interdites en Basic Launch). Au Full Launch : **rewarded ads uniquement**.
    - Orientation : **landscape**.
    - Mobile : oui si tu veux (le jeu se joue au doigt), l'expérience reste meilleure sur ordinateur.
    - Langues : anglais et français.
@@ -30,6 +30,9 @@ CrazyGames commence en général par un **Basic Launch** (une partie des joueurs
 Si le jeu plaît, ils proposent le **Full Launch** avec les revenus publicitaires : rien à changer, c'est déjà intégré.
 
 ## Publicités : c'est le joueur qui choisit
+
+**Désactivées en Basic Launch** (règle de CrazyGames). Le jour du Full Launch, demande-moi de les activer
+(une ligne à changer, puis renvoyer les fichiers).
 
 - Aucune publicité imposée, jamais.
 - Un bouton **cadeau** (dans la colonne de droite, il clignote quand il est disponible) propose :

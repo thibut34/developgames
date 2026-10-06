@@ -25,6 +25,9 @@ function loadScript(src) {
 export const platform = {
   name: 'web',
   files: true,          // exporter / importer des fichiers de sauvegarde
+  // Publicités (bonus contre une publicité) : interdites en « Basic Launch » sur CrazyGames, donc
+  // désactivées tant que le zip n'est pas fabriqué avec data-ads="on" (à activer au « Full Launch »).
+  ads: document.documentElement.dataset.ads === 'on' || new URLSearchParams(location.search).get('ads') === 'on',
 
   async init() {
     if (wanted !== 'crazygames') return;
