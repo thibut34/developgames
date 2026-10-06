@@ -10,6 +10,8 @@ let playing = false;
 let nextReward = 0;
 const REWARD_GAP_MS = 5 * 60 * 1000;   // une récompense au plus toutes les 5 minutes
 
+const withTimeout = (p, ms = 6000) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('délai')), ms))]);
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
@@ -27,8 +29,9 @@ export const platform = {
   async init() {
     if (wanted !== 'crazygames') return;
     try {
-      await loadScript('https://sdk.crazygames.com/crazygames-sdk-v3.js');
-      await window.CrazyGames.SDK.init();
+      if (!window.CrazyGames?.SDK) await withTimeout(loadScript('https://sdk.crazygames.com/crazygames-sdk-v3.js'));
+      // Le jeu ne doit jamais rester bloqué si le SDK ne répond pas : on continue sans lui.
+      await withTimeout(window.CrazyGames.SDK.init());
       if (window.CrazyGames.SDK.environment === 'disabled') return;
       sdk = window.CrazyGames.SDK;
       platform.name = 'crazygames';
