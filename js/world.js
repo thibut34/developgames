@@ -1,6 +1,8 @@
 // Génération de l'archipel à partir d'une graine (même graine = même carte) :
 // une grande île au centre et quatre îles à coloniser, chacune avec sa spécialité.
 import { MAP, T } from './config.js';
+import { EN } from './i18n.js';
+import en from './lang-en.js';
 
 export function rng(seed) {
   let s = seed >>> 0 || 1;
@@ -41,6 +43,7 @@ export const ISLAND_KINDS = {
   fertile: { name: 'Île verdoyante', desc: 'Vastes terres fertiles.' },
   ore: { name: 'Île de fer', desc: 'Montagnes riches en minerai de fer.' },
 };
+if (EN) for (const [k, v] of Object.entries(ISLAND_KINDS)) [v.name, v.desc] = en.islands[k];
 
 // Positions et types des îles d'une carte.
 export function islandLayout(seed) {

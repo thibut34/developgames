@@ -533,6 +533,9 @@ body.on-title #minimap, body.on-title #panel, body.on-title #toolchip, body.on-t
   font-weight: 600;
 }
 .t-menu button:hover { background: var(--panel-3); }
+.t-lang { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 14px; color: var(--muted); }
+.t-lang button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.t-lang button.active { background: var(--panel-3); color: var(--text); }
 .t-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 2px; border: 0; background: none; color: var(--muted); }
 .t-back .ic { transform: rotate(180deg); }
 .t-diffs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }

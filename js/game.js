@@ -5,13 +5,15 @@ import {
 } from './config.js';
 import { generateMap, computeIslands } from './world.js';
 import { DIFFICULTIES, findScenario } from './scenarios.js';
+import { L } from './i18n.js';
+import { store } from './platform.js';
 
 const SAVE_KEY = 'developgames-save-v4';
 
 export const def = (b) => BUILDINGS[b.type];
 const idx = (x, y) => y * MAP + x;
 export const inMap = (x, y) => x >= 0 && y >= 0 && x < MAP && y < MAP;
-export const resName = (k) => (k === 'gold' ? 'or' : GOODS[k].name.toLowerCase());
+export const resName = (k) => (k === 'gold' ? L('or', 'gold') : GOODS[k].name.toLowerCase());
 
 // ---------- Création ----------
 
@@ -53,7 +55,7 @@ export function createGame(seed = Math.floor(Math.random() * 1e9), opts = {}) {
     }
   }
   init(g);
-  log(g, 'Fondation du hameau.', 'good');
+  log(g, L('Fondation du hameau.', 'The hamlet is founded.'), 'good');
   return g;
 }
 
@@ -75,7 +77,7 @@ function init(g) {
 export const season = (g) => Math.floor(g.day / DAYS_PER_SEASON) % 4;
 export const year = (g) => Math.floor(g.day / (DAYS_PER_SEASON * 4)) + 1;
 export const dayOfSeason = (g) => (g.day % DAYS_PER_SEASON) + 1;
-export const dateText = (g) => `${SEASONS[season(g)].name}, jour ${dayOfSeason(g)}, an ${year(g)}`;
+export const dateText = (g) => L(`${SEASONS[season(g)].name}, jour ${dayOfSeason(g)}, an ${year(g)}`, `${SEASONS[season(g)].name}, day ${dayOfSeason(g)}, year ${year(g)}`);
 
 export function tileAt(g, x, y) { return inMap(x, y) ? g.tiles[idx(x, y)] : null; }
 export const islandAt = (g, x, y) => (inMap(x, y) ? g.isl.id[idx(x, y)] : -1);
@@ -265,19 +267,19 @@ export function houseSat(g, b, level = b.level) {
 
 // Peut-elle passer au niveau supérieur ? Renvoie la raison sinon.
 export function upgradeStatus(g, b) {
-  if (b.level >= CLASSES.length) return { ok: false, max: true, reason: 'Niveau maximum' };
+  if (b.level >= CLASSES.length) return { ok: false, max: true, reason: L('Niveau maximum', 'Maximum level') };
   const next = CLASSES[b.level];
-  if (g.era < b.level) return { ok: false, reason: `Disponible à l'ère : ${ERAS[b.level].name}` };
-  if ((b.sat ?? 0) < 0.8) return { ok: false, reason: 'Habitants pas assez satisfaits (80 % requis)' };
-  if ((b.res || 0) < capOf(b) * 0.9) return { ok: false, reason: 'Maison pas encore pleine' };
+  if (g.era < b.level) return { ok: false, reason: L(`Disponible à l'ère : ${ERAS[b.level].name}`, `Available in the era: ${ERAS[b.level].name}`) };
+  if ((b.sat ?? 0) < 0.8) return { ok: false, reason: L('Habitants pas assez satisfaits (80 % requis)', 'Residents not satisfied enough (80% required)') };
+  if ((b.res || 0) < capOf(b) * 0.9) return { ok: false, reason: L('Maison pas encore pleine', 'House not full yet') };
   // On ne fait évoluer que si la classe suivante trouvera de quoi vivre (sinon elle repartirait).
   const nextNeeds = houseNeeds(g, b, b.level + 1);
   const goodsNeeds = nextNeeds.filter((n) => n.good || n.food);
   const goodsAvg = goodsNeeds.reduce((n, x) => n + x.value, 0) / Math.max(1, goodsNeeds.length);
   if (houseSat(g, b, b.level + 1) < 0.7 || goodsAvg < 0.5) {
-    return { ok: false, reason: `Les besoins des ${next.name.toLowerCase()} ne sont pas encore prêts` };
+    return { ok: false, reason: L(`Les besoins des ${next.name.toLowerCase()} ne sont pas encore prêts`, `The needs of ${next.name.toLowerCase()} are not ready yet`) };
   }
-  if (!canAfford(g, next.upgrade)) return { ok: false, reason: `Il faut ${costText(next.upgrade)}` };
+  if (!canAfford(g, next.upgrade)) return { ok: false, reason: L(`Il faut ${costText(next.upgrade)}`, `Requires ${costText(next.upgrade)}`) };
   return { ok: true, cost: next.upgrade };
 }
 
@@ -300,8 +302,8 @@ export const costText = (cost = {}) =>
 // Raison pour laquelle un bâtiment n'est pas encore disponible (ère ou technologie), sinon null.
 export function lockReason(g, type) {
   const d = BUILDINGS[type];
-  if ((d.era || 0) > g.era) return `Débloqué à l'ère : ${ERAS[d.era].name}`;
-  if (d.tech && !g.tech.includes(d.tech)) return `Nécessite la technologie : ${TECHS.find((t) => t.id === d.tech).name}`;
+  if ((d.era || 0) > g.era) return L(`Débloqué à l'ère : ${ERAS[d.era].name}`, `Unlocked in the era: ${ERAS[d.era].name}`);
+  if (d.tech && !g.tech.includes(d.tech)) return `${L('Nécessite la technologie :', 'Requires the technology:')} ${TECHS.find((t) => t.id === d.tech).name}`;
   return null;
 }
 export const eraLocked = (g, type) => !!lockReason(g, type);
@@ -310,34 +312,34 @@ export function canPlace(g, type, x, y) {
   const d = BUILDINGS[type];
   const lock = lockReason(g, type);
   if (lock) return { ok: false, reason: lock };
-  if (d.unique && g.buildings.some((b) => b.type === type)) return { ok: false, reason: 'Déjà construit' };
+  if (d.unique && g.buildings.some((b) => b.type === type)) return { ok: false, reason: L('Déjà construit', 'Already built') };
   for (let dy = 0; dy < d.size; dy++) {
     for (let dx = 0; dx < d.size; dx++) {
       const tx = x + dx, ty = y + dy;
-      if (!inMap(tx, ty)) return { ok: false, reason: 'Hors de la carte' };
+      if (!inMap(tx, ty)) return { ok: false, reason: L('Hors de la carte', 'Outside the map') };
       const t = g.tiles[idx(tx, ty)];
-      if (!TERRAIN[t].build) return { ok: false, reason: `Impossible sur : ${TERRAIN[t].name.toLowerCase()}` };
-      if (g.occ[idx(tx, ty)]) return { ok: false, reason: 'Emplacement occupé' };
-      if (g.roads[idx(tx, ty)]) return { ok: false, reason: 'Une route passe ici' };
+      if (!TERRAIN[t].build) return { ok: false, reason: L(`Impossible sur : ${TERRAIN[t].name.toLowerCase()}`, `Cannot build on: ${TERRAIN[t].name.toLowerCase()}`) };
+      if (g.occ[idx(tx, ty)]) return { ok: false, reason: L('Emplacement occupé', 'Space taken') };
+      if (g.roads[idx(tx, ty)]) return { ok: false, reason: L('Une route passe ici', 'A road runs here') };
     }
   }
   if (d.near != null && !touches(g, x, y, d.size, d.near)) {
-    return { ok: false, reason: `Doit toucher : ${TERRAIN[d.near].name.toLowerCase()}` };
+    return { ok: false, reason: L(`Doit toucher : ${TERRAIN[d.near].name.toLowerCase()}`, `Must touch: ${TERRAIN[d.near].name.toLowerCase()}`) };
   }
   if (d.on != null) {
     for (let dy = 0; dy < d.size; dy++) {
       for (let dx = 0; dx < d.size; dx++) {
-        if (g.tiles[idx(x + dx, y + dy)] !== d.on) return { ok: false, reason: `Uniquement sur : ${TERRAIN[d.on].name.toLowerCase()}` };
+        if (g.tiles[idx(x + dx, y + dy)] !== d.on) return { ok: false, reason: L(`Uniquement sur : ${TERRAIN[d.on].name.toLowerCase()}`, `Only on: ${TERRAIN[d.on].name.toLowerCase()}`) };
       }
     }
   }
   const isl = islandAt(g, x, y);
   if (isl > 0) {
     const ports = g.buildings.filter((b) => b.type === 'port');
-    if (type === 'port' && !ports.some((b) => islandOf(g, b) === 0)) return { ok: false, reason: 'Construisez d\'abord un port sur l\'île principale' };
-    if (type !== 'port' && !ports.some((b) => islandOf(g, b) === isl)) return { ok: false, reason: 'Construisez d\'abord un port sur cette île' };
+    if (type === 'port' && !ports.some((b) => islandOf(g, b) === 0)) return { ok: false, reason: L('Construisez d\'abord un port sur l\'île principale', 'First build a harbour on the main island') };
+    if (type !== 'port' && !ports.some((b) => islandOf(g, b) === isl)) return { ok: false, reason: L('Construisez d\'abord un port sur cette île', 'First build a harbour on this island') };
   }
-  if (!canAfford(g, d.cost)) return { ok: false, reason: `Il manque des ressources (${costText(d.cost)})` };
+  if (!canAfford(g, d.cost)) return { ok: false, reason: L(`Il manque des ressources (${costText(d.cost)})`, `Not enough resources (${costText(d.cost)})`) };
   return { ok: true };
 }
 
@@ -353,17 +355,17 @@ export function place(g, type, x, y) {
   g.stats.built++;
   rebuild(g);
   checkQuests(g);
-  const warn = !b.connected && (d.workers || type === 'house') ? 'Pas encore relié à l\'hôtel de ville par une route.' : '';
+  const warn = !b.connected && (d.workers || type === 'house') ? L('Pas encore relié à l\'hôtel de ville par une route.', 'Not yet linked to the town hall by a road.') : '';
   return { ok: true, building: b, warn };
 }
 
 export function placeRoad(g, x, y) {
-  if (!inMap(x, y)) return { ok: false, reason: 'Hors de la carte' };
+  if (!inMap(x, y)) return { ok: false, reason: L('Hors de la carte', 'Outside the map') };
   const i = idx(x, y);
   if (g.roads[i]) return { ok: false, silent: true };
-  if (!TERRAIN[g.tiles[i]].build) return { ok: false, reason: `Impossible sur : ${TERRAIN[g.tiles[i]].name.toLowerCase()}` };
-  if (g.occ[i]) return { ok: false, reason: 'Emplacement occupé' };
-  if (!canAfford(g, ROAD_COST)) return { ok: false, reason: 'Pas assez de bois' };
+  if (!TERRAIN[g.tiles[i]].build) return { ok: false, reason: L(`Impossible sur : ${TERRAIN[g.tiles[i]].name.toLowerCase()}`, `Cannot build on: ${TERRAIN[g.tiles[i]].name.toLowerCase()}`) };
+  if (g.occ[i]) return { ok: false, reason: L('Emplacement occupé', 'Space taken') };
+  if (!canAfford(g, ROAD_COST)) return { ok: false, reason: L('Pas assez de bois', 'Not enough wood') };
   pay(g, ROAD_COST);
   g.roads[i] = 1;
   return { ok: true };
@@ -392,7 +394,7 @@ export function clearTile(g, x, y) {
   const t = tileAt(g, x, y);
   const c = CLEAR[t];
   if (!c) return { ok: false, silent: true };
-  if (!canAfford(g, c.cost)) return { ok: false, reason: `Il faut ${costText(c.cost)}` };
+  if (!canAfford(g, c.cost)) return { ok: false, reason: L(`Il faut ${costText(c.cost)}`, `Requires ${costText(c.cost)}`) };
   pay(g, c.cost);
   gain(g, c.gain);
   g.tiles[idx(x, y)] = T.GRASS;
@@ -402,8 +404,8 @@ export function clearTile(g, x, y) {
 }
 
 export function demolishBuilding(g, b) {
-  if (b.type === 'townhall') return { ok: false, reason: 'L\'hôtel de ville ne peut pas être démoli' };
-  if (b.type === 'wonder' && !b.build) return { ok: false, reason: 'On ne démolit pas une merveille !' };
+  if (b.type === 'townhall') return { ok: false, reason: L('L\'hôtel de ville ne peut pas être démoli', 'The town hall cannot be demolished') };
+  if (b.type === 'wonder' && !b.build) return { ok: false, reason: L('On ne démolit pas une merveille !', 'You cannot demolish a wonder!') };
   const refund = {};
   for (const [k, v] of Object.entries(def(b).cost || {})) refund[k] = Math.floor(v / 2);
   gain(g, refund);
@@ -443,13 +445,13 @@ export function togglePause(g, b) { b.paused = !b.paused; rebuild(g); }
 export function toggleLock(g, b) { b.lock = !b.lock; }
 
 export function bucketBrigade(g, b) {
-  if (!(b.fire > 0)) return { ok: false, reason: 'Ce bâtiment ne brûle pas' };
-  if (!b.cover.well) return { ok: false, reason: 'Aucun puits à proximité pour former une chaîne de seaux' };
-  if (g.gold < FIRE.bucketCost) return { ok: false, reason: 'Pas assez d\'or' };
+  if (!(b.fire > 0)) return { ok: false, reason: L('Ce bâtiment ne brûle pas', 'This building is not on fire') };
+  if (!b.cover.well) return { ok: false, reason: L('Aucun puits à proximité pour former une chaîne de seaux', 'No well nearby to form a bucket brigade') };
+  if (g.gold < FIRE.bucketCost) return { ok: false, reason: L('Pas assez d\'or', 'Not enough gold') };
   g.gold -= FIRE.bucketCost;
   b.fire = 0;
   rebuild(g);
-  notify(g, `Incendie maîtrisé : ${def(b).name}.`, 'good', 'good');
+  notify(g, L(`Incendie maîtrisé : ${def(b).name}.`, `Fire under control: ${def(b).name}.`), 'good', 'good');
   return { ok: true };
 }
 
@@ -478,10 +480,10 @@ export const serviceRange = (g, d) => d.service.r + (g.mods.range[d.service.type
 
 export function techStatus(g, t) {
   if (g.tech.includes(t.id)) return { done: true };
-  if (t.era > g.era) return { ok: false, reason: `Ère requise : ${ERAS[t.era].name}` };
+  if (t.era > g.era) return { ok: false, reason: L(`Ère requise : ${ERAS[t.era].name}`, `Era required: ${ERAS[t.era].name}`) };
   const missing = (t.req || []).filter((r) => !g.tech.includes(r));
-  if (missing.length) return { ok: false, reason: `Nécessite : ${missing.map((r) => TECHS.find((x) => x.id === r).name).join(', ')}` };
-  if (g.rp < t.cost) return { ok: false, reason: `Il faut ${t.cost} points de recherche`, affordable: false };
+  if (missing.length) return { ok: false, reason: `${L('Nécessite :', 'Requires:')} ${missing.map((r) => TECHS.find((x) => x.id === r).name).join(', ')}` };
+  if (g.rp < t.cost) return { ok: false, reason: L(`Il faut ${t.cost} points de recherche`, `Requires ${t.cost} research points`), affordable: false };
   return { ok: true };
 }
 
@@ -493,7 +495,7 @@ export function research(g, id) {
   g.tech.push(id);
   computeMods(g);
   rebuild(g);
-  notify(g, `Découverte : ${t.name}. ${t.desc}`, 'good', 'quest');
+  notify(g, L(`Découverte : ${t.name}. ${t.desc}`, `Discovery: ${t.name}. ${t.desc}`), 'good', 'quest');
   checkQuests(g);
   return { ok: true };
 }
@@ -506,7 +508,7 @@ export function eraStatus(g) {
   const [c, n] = next.need;
   const reqs = [
     { text: `${n} ${CLASSES[c].name.toLowerCase()}`, ok: g.cls[c] >= n, cur: Math.floor(g.cls[c]), max: n },
-    { text: `Payer ${costText(next.cost)}`, ok: canAfford(g, next.cost) },
+    { text: L(`Payer ${costText(next.cost)}`, `Pay ${costText(next.cost)}`), ok: canAfford(g, next.cost) },
   ];
   return { next, reqs, ok: reqs.every((r) => r.ok) };
 }
@@ -518,7 +520,7 @@ export function advanceEra(g) {
   g.era++;
   rebuild(g);
   g.pending.push({ type: 'era', era: g.era });
-  log(g, `Nouvelle ère : ${ERAS[g.era].name}.`, 'good');
+  log(g, L(`Nouvelle ère : ${ERAS[g.era].name}.`, `New era: ${ERAS[g.era].name}.`), 'good');
   checkQuests(g);
   return true;
 }
@@ -532,8 +534,8 @@ export const tradeHasPost = hasTrading;
 
 export function buy(g, k, n) {
   const cost = Math.ceil(buyPrice(g, k) * n);
-  if (g.gold < cost) return { ok: false, reason: 'Pas assez d\'or' };
-  if (g.goods[k] + n > storage(g)) return { ok: false, reason: 'Stockage plein' };
+  if (g.gold < cost) return { ok: false, reason: L('Pas assez d\'or', 'Not enough gold') };
+  if (g.goods[k] + n > storage(g)) return { ok: false, reason: L('Stockage plein', 'Storage full') };
   g.gold -= cost;
   g.goods[k] += n;
   g.prices[k] = Math.min(1.8, g.prices[k] * 1.03);
@@ -541,7 +543,7 @@ export function buy(g, k, n) {
 }
 
 export function sell(g, k, n) {
-  if (g.goods[k] < n) return { ok: false, reason: 'Pas assez à vendre' };
+  if (g.goods[k] < n) return { ok: false, reason: L('Pas assez à vendre', 'Not enough to sell') };
   g.goods[k] -= n;
   g.gold += Math.floor(sellPrice(g, k) * n);
   g.prices[k] = Math.max(0.5, g.prices[k] * 0.97);
@@ -591,7 +593,7 @@ function checkScenario(g) {
     g.pending.push({ type: 'scenarioWin', id: g.scenario, days: g.day - (g.scenarioStart || 0) });
     return;
   }
-  const reason = s.left !== null && s.left <= 0 ? 'Le temps imparti est écoulé.' : s.sc.lose?.(g, questHelpers(g));
+  const reason = s.left !== null && s.left <= 0 ? L('Le temps imparti est écoulé.', 'Time is up.') : s.sc.lose?.(g, questHelpers(g));
   if (reason) {
     g.scenarioEnded = 'lose';
     g.pending.push({ type: 'scenarioLose', id: g.scenario, reason });
@@ -605,7 +607,7 @@ export function checkQuests(g) {
     if (!p || p.cur < p.max) return;
     gain(g, p.q.reward);
     g.quest++;
-    notify(g, `Objectif atteint : ${p.q.text}. Récompense : ${costText(p.q.reward)}.`, 'good', 'quest');
+    notify(g, L(`Objectif atteint : ${p.q.text}. Récompense : ${costText(p.q.reward)}.`, `Goal reached: ${p.q.text}. Reward: ${costText(p.q.reward)}.`), 'good', 'quest');
   }
 }
 
@@ -620,7 +622,7 @@ function fireRisk(g, b) {
 function ignite(g, b, spread) {
   b.fire = 1;
   g.stats.fires++;
-  notify(g, spread ? `Le feu se propage : ${def(b).name}.` : `Incendie : ${def(b).name} !`, 'danger', 'alarm', b);
+  notify(g, spread ? L(`Le feu se propage : ${def(b).name}.`, `The fire spreads: ${def(b).name}.`) : L(`Incendie : ${def(b).name} !`, `Fire: ${def(b).name}!`), 'danger', 'alarm', b);
 }
 
 function updateFires(g) {
@@ -631,7 +633,7 @@ function updateFires(g) {
     b.fire++;
     if (b.cover?.fire && b.fire > FIRE.stationDays) {
       b.fire = 0;
-      notify(g, `Les pompiers ont éteint l'incendie : ${def(b).name}.`, 'good', 'good');
+      notify(g, L(`Les pompiers ont éteint l'incendie : ${def(b).name}.`, `Firefighters put out the fire: ${def(b).name}.`), 'good', 'good');
       continue;
     }
     for (const o of g.buildings) {
@@ -644,7 +646,7 @@ function updateFires(g) {
       for (let dy = 0; dy < s; dy++) {
         for (let dx = 0; dx < s; dx++) g.buildings.push({ id: g.nextId++, type: 'ruins', x: b.x + dx, y: b.y + dy, level: 1 });
       }
-      notify(g, `Détruit par le feu : ${def(b).name}.`, 'danger', 'bad');
+      notify(g, L(`Détruit par le feu : ${def(b).name}.`, `Destroyed by fire: ${def(b).name}.`), 'danger', 'bad');
     }
   }
   // Nouveaux départs de feu
@@ -666,18 +668,18 @@ const EVENTS = [
       const th = g.buildings.find((b) => b.type === 'townhall');
       if (th.cover.guard) {
         g.gold += 30;
-        notify(g, 'Des bandits ont été repoussés par la garde (+30 or).', 'good', 'good');
+        notify(g, L('Des bandits ont été repoussés par la garde (+30 or).', 'Bandits were driven off by the guard (+30 gold).'), 'good', 'good');
       } else {
         const lost = Math.floor(g.gold * 0.2);
         g.gold -= lost;
-        notify(g, `Des bandits ont pillé le trésor : −${lost} or. Une tour de guet près de l'hôtel de ville les arrêterait.`, 'danger', 'bad');
+        notify(g, L(`Des bandits ont pillé le trésor : −${lost} or. Une tour de guet près de l'hôtel de ville les arrêterait.`, `Bandits looted the treasury: −${lost} gold. A watchtower near the town hall would stop them.`), 'danger', 'bad');
       }
     },
   },
   {
     w: 2,
     can: (g) => [1, 2].includes(season(g)) && g.buildings.some((b) => b.type === 'farm'),
-    run(g) { gain(g, { wheat: 30 }); notify(g, 'Récolte exceptionnelle : +30 blé.', 'good', 'good'); },
+    run(g) { gain(g, { wheat: 30 }); notify(g, L('Récolte exceptionnelle : +30 blé.', 'Bumper harvest: +30 wheat.'), 'good', 'good'); },
   },
   {
     w: 2,
@@ -690,7 +692,7 @@ const EVENTS = [
         b.res += add;
         n += add;
       }
-      notify(g, `${Math.round(n)} migrants s'installent dans le hameau.`, 'good', 'good');
+      notify(g, L(`${Math.round(n)} migrants s'installent dans le hameau.`, `${Math.round(n)} migrants settle in your town.`), 'good', 'good');
     },
   },
   {
@@ -704,8 +706,8 @@ const EVENTS = [
       const n = 20 + Math.floor(Math.random() * 3) * 10;
       const m = Math.max(1, Math.round((n * GOODS[give].price * 1.4) / GOODS[get].price));
       g.pending.push({ type: 'caravan', give: { k: give, n }, get: { k: get, n: m } });
-      log(g, 'Une caravane marchande propose un échange.');
-      g.notes.push({ text: 'Une caravane marchande est arrivée.', kind: '', sound: 'quest' });
+      log(g, L('Une caravane marchande propose un échange.', 'A merchant caravan offers a trade.'));
+      g.notes.push({ text: L('Une caravane marchande est arrivée.', 'A merchant caravan has arrived.'), kind: '', sound: 'quest' });
     },
   },
   {
@@ -720,7 +722,7 @@ const EVENTS = [
         b.res -= l;
         lost += l;
       }
-      notify(g, lost ? `Épidémie : ${lost} habitants sont morts ou ont fui. Un médecin protégerait les quartiers.` : 'Une épidémie a été enrayée par les médecins.', lost ? 'danger' : 'good', lost ? 'bad' : 'good');
+      notify(g, lost ? L(`Épidémie : ${lost} habitants sont morts ou ont fui. Un médecin protégerait les quartiers.`, `Epidemic: ${lost} residents died or fled. A doctor would protect the neighbourhoods.`) : L('Une épidémie a été enrayée par les médecins.', 'An epidemic was stopped by the doctors.'), lost ? 'danger' : 'good', lost ? 'bad' : 'good');
     },
   },
   {
@@ -731,13 +733,13 @@ const EVENTS = [
       const n = g.buildings.filter((b) => isHouse(b) && b.level >= 2 && !b.cover.police).length;
       const lost = Math.min(Math.floor(g.gold * 0.3), n * 12);
       g.gold -= lost;
-      notify(g, `Vague de cambriolages dans ${n} maisons sans poste de garde : −${lost} or.`, 'danger', 'bad');
+      notify(g, L(`Vague de cambriolages dans ${n} maisons sans poste de garde : −${lost} or.`, `A wave of burglaries hit ${n} houses without a guard post: −${lost} gold.`), 'danger', 'bad');
     },
   },
   {
     w: 1,
     can: (g) => g.buildings.some((b) => b.type === 'fisher'),
-    run(g) { gain(g, { fish: 25 }); notify(g, 'Banc de poissons exceptionnel : +25 poisson.', 'good', 'good'); },
+    run(g) { gain(g, { fish: 25 }); notify(g, L('Banc de poissons exceptionnel : +25 poisson.', 'Huge shoal of fish: +25 fish.'), 'good', 'good'); },
   },
 ];
 
@@ -753,10 +755,10 @@ function rollEvent(g) {
 }
 
 export function acceptOffer(g, offer) {
-  if (g.goods[offer.give.k] < offer.give.n) return { ok: false, reason: 'Vous n\'avez plus assez de marchandises' };
+  if (g.goods[offer.give.k] < offer.give.n) return { ok: false, reason: L('Vous n\'avez plus assez de marchandises', 'You no longer have enough goods') };
   g.goods[offer.give.k] -= offer.give.n;
   gain(g, { [offer.get.k]: offer.get.n });
-  log(g, `Échange conclu : ${offer.give.n} ${resName(offer.give.k)} contre ${offer.get.n} ${resName(offer.get.k)}.`, 'good');
+  log(g, L(`Échange conclu : ${offer.give.n} ${resName(offer.give.k)} contre ${offer.get.n} ${resName(offer.get.k)}.`, `Trade done: ${offer.give.n} ${resName(offer.give.k)} for ${offer.get.n} ${resName(offer.get.k)}.`), 'good');
   return { ok: true };
 }
 
@@ -766,7 +768,7 @@ export function step(g) {
   const prevSeason = season(g);
   g.day++;
   const s = season(g);
-  if (s !== prevSeason) notify(g, `Début de ${s === 0 ? 'printemps' : s === 1 ? 'l\'été' : s === 2 ? 'l\'automne' : 'l\'hiver'}.`, '', 'season');
+  if (s !== prevSeason) notify(g, L(`Début de ${s === 0 ? 'printemps' : s === 1 ? 'l\'été' : s === 2 ? 'l\'automne' : 'l\'hiver'}.`, `${SEASONS[s].name} begins.`), '', 'season');
 
   countClasses(g);
   assignWorkers(g);
@@ -854,7 +856,7 @@ export function step(g) {
     const r = k === 'fish' ? g.supply[0].food : ratio[k];
     if (v > 0.2 && r < 0.6 && g.day - (g.alerts[k] ?? -999) > 25) {
       g.alerts[k] = g.day;
-      notify(g, k === 'fish' ? 'Pénurie de nourriture : les paysans manquent de poisson.' : `Pénurie de ${GOODS[k].name.toLowerCase()} : vos habitants en manquent.`, 'warn', 'bad');
+      notify(g, k === 'fish' ? L('Pénurie de nourriture : les paysans manquent de poisson.', 'Food shortage: the peasants are short of fish.') : L(`Pénurie de ${GOODS[k].name.toLowerCase()} : vos habitants en manquent.`, `Shortage of ${GOODS[k].name.toLowerCase()}: your residents lack it.`), 'warn', 'bad');
     }
   }
 
@@ -892,13 +894,13 @@ export function step(g) {
     const use = def(b).buildUse;
     b.stalled = !!use && !canAfford(g, use);
     if (b.stalled) {
-      if (g.day - (g.alerts.build ?? -999) > 20) { g.alerts.build = g.day; notify(g, `Chantier arrêté : il manque des matériaux (${costText(use)} par jour).`, 'warn', 'bad', b); }
+      if (g.day - (g.alerts.build ?? -999) > 20) { g.alerts.build = g.day; notify(g, L(`Chantier arrêté : il manque des matériaux (${costText(use)} par jour).`, `Construction halted: materials are missing (${costText(use)} per day).`), 'warn', 'bad', b); }
       continue;
     }
     if (use) pay(g, use);
     b.build--;
     if (b.build === 0) {
-      notify(g, `Chantier terminé : ${def(b).name}.`, 'good', 'quest', b);
+      notify(g, L(`Chantier terminé : ${def(b).name}.`, `Construction complete: ${def(b).name}.`), 'good', 'quest', b);
       if (b.type === 'wonder') {
         g.won = true;
         g.pending.push({ type: 'victory' });
@@ -953,12 +955,12 @@ export function deserialize(text) {
 }
 
 export function save(g) {
-  try { localStorage.setItem(SAVE_KEY, serialize(g)); } catch { /* stockage indisponible */ }
+  try { store.setItem(SAVE_KEY, serialize(g)); } catch { /* stockage indisponible */ }
 }
 
 export function load() {
   try {
-    const text = localStorage.getItem(SAVE_KEY);
+    const text = store.getItem(SAVE_KEY);
     return text ? deserialize(text) : null;
   } catch {
     return null;
@@ -966,5 +968,5 @@ export function load() {
 }
 
 export function clearSave() {
-  try { localStorage.removeItem(SAVE_KEY); } catch { /* rien */ }
+  try { store.removeItem(SAVE_KEY); } catch { /* rien */ }
 }

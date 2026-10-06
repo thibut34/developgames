@@ -1,4 +1,6 @@
 // Niveaux de difficulté et missions de la campagne.
+import { EN } from './i18n.js';
+import en from './lang-en.js';
 
 export const DIFFICULTIES = [
   { name: 'Facile', desc: 'Plus de ressources au départ, impôts généreux, peu d\'incendies.', start: 1.5, tax: 1.2, upkeep: 0.85, fire: 0.5, events: 0.7 },
@@ -97,5 +99,16 @@ export const SCENARIOS = [
     ],
   },
 ];
+
+// Version anglaise des difficultés et des missions.
+if (EN) {
+  DIFFICULTIES.forEach((d, i) => { [d.name, d.desc] = en.difficulties[i]; });
+  for (const sc of SCENARIOS) {
+    const t = en.scenarios[sc.id];
+    sc.name = t.name; sc.intro = t.intro;
+    sc.goals.forEach((goal, i) => { goal.text = t.goals[i]; });
+    if (sc.lose && t.lose) { const lose = sc.lose; sc.lose = (g, h) => (lose(g, h) ? t.lose : null); }
+  }
+}
 
 export const findScenario = (id) => SCENARIOS.find((s) => s.id === id);

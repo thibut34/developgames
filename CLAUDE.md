@@ -17,7 +17,12 @@ Jeu de développement de village/cité dans le navigateur. Projet indépendant d
   à régénérer depuis unpkg `lucide-static` si besoin d'une nouvelle icône) et miniatures dessinées (`js/thumbs.js`).
 - Maniabilité : l'outil de construction se désélectionne après usage (option pour le garder), clic droit / Échap annulent.
 - Doit rester jouable sur mobile (tactile, petits écrans) : un portage mobile est prévu plus tard.
-- Textes du jeu et messages de commit en français.
+- Textes du jeu et messages de commit en français. Le jeu existe aussi en anglais : tout texte affiché passe par
+  `L('français', 'english')` (`js/i18n.js`) ; les données (bâtiments, objectifs, missions…) ont leur version
+  anglaise dans `js/lang-en.js`. Tester les deux langues (choix dans le menu principal ou les options).
+- Portails de jeux (`js/platform.js`) : sur CrazyGames, sauvegardes via le SDK (`store`, jamais `localStorage`
+  directement), phases de jeu signalées, publicité seulement entre deux parties. Test local :
+  http://localhost:8000/?platform=crazygames. Fiche, couvertures et guide de publication : dossier `fiche/`.
 
 ## Automatisation
 
@@ -25,3 +30,4 @@ Jeu de développement de village/cité dans le navigateur. Projet indépendant d
 - Chaque push sur `main` publie le jeu automatiquement sur GitHub Pages
   (workflow `.github/workflows/mise-en-ligne.yml`) : https://thibut34.github.io/developgames/
 - Après un push, vérifier que le workflow « Mise en ligne » passe (`gh run list --limit 1`).
+- Le même workflow fabrique le zip CrazyGames : https://thibut34.github.io/developgames/developgames-crazygames.zip

@@ -1,5 +1,7 @@
 # Mise en ligne automatique : à chaque nouvelle version envoyée sur GitHub (branche main),
 # le jeu est publié sur GitHub Pages (https://thibut34.github.io/developgames/).
+# Le zip à envoyer sur CrazyGames est fabriqué en même temps et téléchargeable à :
+# https://thibut34.github.io/developgames/developgames-crazygames.zip
 name: Mise en ligne
 
 on:
@@ -28,6 +30,14 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html style.css js fonts icon.svg manifest.webmanifest sw.js _site/
+      - name: Zip pour CrazyGames (SDK activé, sans mode hors ligne)
+        run: |
+          mkdir _cg
+          cp -r index.html style.css js fonts icon.svg _cg/
+          sed -i 's/<html lang="fr">/<html lang="fr" data-platform="crazygames">/' _cg/index.html
+          sed -i '/rel="manifest"/d' _cg/index.html
+          grep -q 'data-platform="crazygames"' _cg/index.html
+          (cd _cg && zip -qr ../_site/developgames-crazygames.zip .)
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

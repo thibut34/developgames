@@ -17,6 +17,12 @@ import { findScenario, DIFFICULTIES } from './scenarios.js';
 import { createTitle, markMission } from './title.js';
 import { createBot } from './autobuild.js';
 import { ISLAND_KINDS } from './world.js';
+import { L, setLang } from './i18n.js';
+import { platform } from './platform.js';
+
+// Sur un portail de jeux, le SDK doit être prêt avant de lire les sauvegardes.
+await platform.init();
+const { store } = platform;
 
 const AUTOSAVE_EVERY = 10;
 const SETTINGS_KEY = 'developgames-settings-v3';
@@ -26,8 +32,8 @@ const renderer = createRenderer(canvas);
 const cam = { x: 0, y: 0, zoom: 1 };
 
 let settings = { sound: true, icons: true, minimap: true, keepTool: false, seenHelp: false };
-try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); } catch { /* défaut */ }
-const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* rien */ } };
+try { Object.assign(settings, JSON.parse(store.getItem(SETTINGS_KEY)) || {}); } catch { /* défaut */ }
+const saveSettings = () => { try { store.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* rien */ } };
 audio.setEnabled(settings.sound);
 
 const ui = {
@@ -60,7 +66,7 @@ const anchor = (b) => { const s = def(b).size; return P(b.x + s / 2, b.y + s / 2
 // ---------- Outils ----------
 function selectTool(id) {
   if (BUILDINGS[id] && eraLocked(g, id)) {
-    view.toast(`${BUILDINGS[id].name} : ${lockReason(g, id).toLowerCase()}.`, 'error');
+    view.toast(`${BUILDINGS[id].name}${L(' :', ':')} ${lockReason(g, id).toLowerCase()}.`, 'error');
     sound('error');
     return;
   }
@@ -135,7 +141,7 @@ function onGesture(a, b, done, cancelled) {
     const path = lPath(a, b);
     ui.preview = { kind: 'road', path };
     if (!done) {
-      view.showTip(`<b>Route</b><p>${path.length} cases · ${roadPathCost(g, path)} bois</p>`, mouse.x, mouse.y);
+      view.showTip(`<b>${TOOLS[1].name}</b><p>${L(`${path.length} cases · ${roadPathCost(g, path)} bois`, `${path.length} tiles · ${roadPathCost(g, path)} wood`)}</p>`, mouse.x, mouse.y);
       return;
     }
     const r = placeRoadPath(g, path);
@@ -182,17 +188,18 @@ const actions = {
   sell(k, n) { const r = sell(g, k, Number(n)); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },
   help() { showHelp(); },
   saveSlot(i) { saveToSlot(Number(i)); },
-  toMenu() { save(g); hasAutosave = true; view.closePanel(); title.show(); },
+  toMenu() { save(g); hasAutosave = true; view.closePanel(); showTitle(); },
+  setLang(l) { save(g); setLang(l); },
   exportSave() {
     const blob = new Blob([serialize(g)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `developgames-jour${g.day}.json`;
+    a.download = `developgames-${L('jour', 'day')}${g.day}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
   importSave() { document.getElementById('import-file').click(); },
-  newGame() { save(g); hasAutosave = true; view.closePanel(); title.show('new'); },
+  newGame() { save(g); hasAutosave = true; view.closePanel(); showTitle('new'); },
   setOption(opt, value) {
     settings[opt] = value;
     ui[opt] = value;
@@ -213,7 +220,7 @@ const actions = {
   modalClosed() { modalPaused = false; },
 };
 
-const view = createUI({ get g() { return g; }, ui, act: actions });
+const view = createUI({ get g() { return g; }, ui, act: actions, platform });
 
 document.getElementById('import-file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -223,9 +230,9 @@ document.getElementById('import-file').addEventListener('change', async (e) => {
     const ng = deserialize(await file.text());
     if (!ng) throw new Error('format');
     startGame(ng);
-    view.toast('Sauvegarde importée.', 'good');
+    view.toast(L('Sauvegarde importée.', 'Save imported.'), 'good');
   } catch {
-    view.toast('Ce fichier n\'est pas une sauvegarde valide.', 'error');
+    view.toast(L('Ce fichier n\'est pas une sauvegarde valide.', 'This file is not a valid save.'), 'error');
   }
 });
 
@@ -300,49 +307,52 @@ function drainEvents() {
   while (g.pending.length) {
     const p = g.pending.shift();
     if (p.type === 'caravan') {
-      view.showModal(`<div class="m-ic">${icon('scale')}</div><h2>Caravane marchande</h2>
-        <p class="center">Des marchands de passage proposent un échange.</p>
+      view.showModal(`<div class="m-ic">${icon('scale')}</div><h2>${L('Caravane marchande', 'Merchant caravan')}</h2>
+        <p class="center">${L('Des marchands de passage proposent un échange.', 'Travelling merchants offer a trade.')}</p>
         <div class="offer">${resLine(p.give.k, p.give.n)}${icon('chevron-right')}${resLine(p.get.k, p.get.n)}</div>`, [
-        { label: 'Refuser' },
-        { label: 'Accepter', cls: 'primary', onClick: () => { const r = acceptOffer(g, p); if (r.ok) { view.toast('Échange conclu.', 'good'); sound('coin'); } else fail(r.reason); afterChange(); } },
+        { label: L('Refuser', 'Decline') },
+        { label: L('Accepter', 'Accept'), cls: 'primary', onClick: () => { const r = acceptOffer(g, p); if (r.ok) { view.toast(L('Échange conclu.', 'Trade done.'), 'good'); sound('coin'); } else fail(r.reason); afterChange(); } },
       ]);
     } else if (p.type === 'era') {
       sound('era');
       const unlocks = Object.entries(BUILDINGS).filter(([, d]) => d.era === p.era);
       const th = g.buildings.find((b) => b.type === 'townhall');
       fx.sparkle(...P(th.x + 1, th.y + 1));
-      view.showModal(`<div class="m-ic">${icon('crown')}</div><h2>Nouvelle ère : ${ERAS[p.era].name}</h2>
-        <p class="center">Le stockage augmente${p.era >= 2 ? ' et les routes sont désormais pavées' : ''}.
-        ${CLASSES[p.era] ? `Les maisons peuvent maintenant accueillir des <b>${CLASSES[p.era].name.toLowerCase()}</b>.` : ''}</p>
-        ${unlocks.length ? `<p class="center muted">Nouveaux bâtiments</p><div class="unlocks">${unlocks.map(([, d]) => `<span>${d.name}</span>`).join('')}</div>` : ''}`,
-      [{ label: 'Continuer', cls: 'primary' }]);
+      view.showModal(`<div class="m-ic">${icon('crown')}</div><h2>${L('Nouvelle ère :', 'New era:')} ${ERAS[p.era].name}</h2>
+        <p class="center">${L(`Le stockage augmente${p.era >= 2 ? ' et les routes sont désormais pavées' : ''}.`, `Storage increases${p.era >= 2 ? ' and roads are now paved' : ''}.`)}
+        ${CLASSES[p.era] ? `${L('Les maisons peuvent maintenant accueillir des', 'Houses can now hold')} <b>${CLASSES[p.era].name.toLowerCase()}</b>.` : ''}</p>
+        ${unlocks.length ? `<p class="center muted">${L('Nouveaux bâtiments', 'New buildings')}</p><div class="unlocks">${unlocks.map(([, d]) => `<span>${d.name}</span>`).join('')}</div>` : ''}`,
+      [{ label: L('Continuer', 'Continue'), cls: 'primary' }]);
       view.renderItems();
+      platform.happy();
     } else if (p.type === 'scenarioWin') {
       sound('victory');
       markMission(p.id, p.days);
+      platform.happy();
       const sc = findScenario(p.id);
       const next = SCENARIO_ORDER[SCENARIO_ORDER.indexOf(p.id) + 1];
-      view.showModal(`<div class="m-ic">${icon('trophy')}</div><h2>Mission accomplie</h2>
-        <p class="center">« ${sc.name} » réussie en ${p.days} jours.</p>`, [
-        { label: 'Continuer à jouer' },
+      view.showModal(`<div class="m-ic">${icon('trophy')}</div><h2>${L('Mission accomplie', 'Mission complete')}</h2>
+        <p class="center">${L(`« ${sc.name} » réussie en ${p.days} jours.`, `“${sc.name}” completed in ${p.days} days.`)}</p>`, [
+        { label: L('Continuer à jouer', 'Keep playing') },
         { label: 'Menu', onClick: () => actions.toMenu() },
-        ...(next ? [{ label: 'Mission suivante', cls: 'primary', onClick: () => startScenario(next) }] : []),
+        ...(next ? [{ label: L('Mission suivante', 'Next mission'), cls: 'primary', onClick: () => startScenario(next) }] : []),
       ]);
     } else if (p.type === 'scenarioLose') {
       sound('bad');
-      view.showModal(`<div class="m-ic">${icon('hourglass')}</div><h2>Mission échouée</h2><p class="center">${p.reason}</p>`, [
+      view.showModal(`<div class="m-ic">${icon('hourglass')}</div><h2>${L('Mission échouée', 'Mission failed')}</h2><p class="center">${p.reason}</p>`, [
         { label: 'Menu', onClick: () => actions.toMenu() },
-        { label: 'Réessayer', cls: 'primary', onClick: () => startScenario(p.id) },
+        { label: L('Réessayer', 'Try again'), cls: 'primary', onClick: () => startScenario(p.id) },
       ]);
     } else if (p.type === 'victory') {
       sound('victory');
-      view.showModal(`<div class="m-ic">${icon('castle')}</div><h2>Victoire</h2>
-        <p class="center">La Grande Cathédrale domine votre cité. Votre nom restera dans l'histoire.</p>
-        <ul class="parts"><li><span>Habitants</span><b>${Math.floor(population(g))}</b></li>
-        <li><span>Jours écoulés</span><b>${g.day}</b></li>
-        <li><span>Bâtiments construits</span><b>${g.stats.built}</b></li>
-        <li><span>Incendies</span><b>${g.stats.fires}</b></li></ul>`, [
-        { label: 'Continuer à jouer', cls: 'primary' },
+      platform.happy();
+      view.showModal(`<div class="m-ic">${icon('castle')}</div><h2>${L('Victoire', 'Victory')}</h2>
+        <p class="center">${L('La Grande Cathédrale domine votre cité. Votre nom restera dans l\'histoire.', 'The Great Cathedral towers over your city. Your name will go down in history.')}</p>
+        <ul class="parts"><li><span>${L('Habitants', 'Residents')}</span><b>${Math.floor(population(g))}</b></li>
+        <li><span>${L('Jours écoulés', 'Days elapsed')}</span><b>${g.day}</b></li>
+        <li><span>${L('Bâtiments construits', 'Buildings built')}</span><b>${g.stats.built}</b></li>
+        <li><span>${L('Incendies', 'Fires')}</span><b>${g.stats.fires}</b></li></ul>`, [
+        { label: L('Continuer à jouer', 'Keep playing'), cls: 'primary' },
       ]);
     }
   }
@@ -350,7 +360,7 @@ function drainEvents() {
 
 // ---------- Aide ----------
 const step_ = (ic, html) => `<div class="help-step">${icon(ic)}<div>${html}</div></div>`;
-const HELP = [
+const HELP_FR = [
   ['house', 'Bienvenue', `<p class="center">Fondez un hameau sur votre île et faites-en une grande cité, jusqu'à la <b>Grande Cathédrale</b>.</p>
     ${step_('mouse-pointer-2', 'Glissez pour vous déplacer, molette ou pincer pour zoomer. Clic droit ou Échap pour annuler un outil.')}
     ${step_('target', 'L\'<b>objectif</b> en haut à gauche vous guide pas à pas.')}`],
@@ -369,11 +379,31 @@ const HELP = [
     ${step_('flame', 'Le feu peut prendre et se propager aux voisins. Un <b>poste d\'incendie</b> empêche les départs de feu dans sa zone et éteint vite les incendies ; un puits permet une chaîne de seaux.')}
     ${step_('layers', 'Les <b>calques</b> (bouton à droite) montrent l\'eau, les marchés, la protection incendie, la beauté et la satisfaction.')}`],
 ];
+const HELP_EN = [
+  ['house', 'Welcome', `<p class="center">Found a hamlet on your island and turn it into a great city, all the way to the <b>Great Cathedral</b>.</p>
+    ${step_('mouse-pointer-2', 'Drag to move around, mouse wheel or pinch to zoom. Right-click or Escape cancels a tool.')}
+    ${step_('target', 'The <b>goal</b> at the top left guides you step by step.')}`],
+  ['route', 'Roads and workers', `${step_('route', 'Every building must be <b>linked to the town hall by a road</b>. Drag to lay one: a preview shows the route and its cost.')}
+    ${step_('users', 'Buildings need <b>workers of a specific class</b>: peasants for resources, artisans for workshops, and so on. Half of the residents work.')}`],
+  ['users', 'Four classes of residents', `${step_('house', 'A dwelling first houses <b>peasants</b>. When they are satisfied and the era allows it, it upgrades to an <b>artisan</b> house, then <b>burghers</b> and <b>nobles</b>, who pay far more taxes.')}
+    ${step_('croissant', 'Each class has its needs: fish, bread, cloth, beer, tools, wine, and nearby services (well, market, chapel, tavern, school).')}
+    ${step_('lock', 'Lock a house\'s upgrade to keep peasants at work.')}`],
+  ['factory', 'Production chains', `${step_('wheat', 'Wheat → mill → flour → bakery → bread. Wool → weaver → cloth. Ore + charcoal → smelter → iron → forge → tools.')}
+    ${step_('factory', 'The <b>Goods</b> panel shows what is produced and used each day: watch out for deficits.')}
+    ${step_('landmark', 'Every building costs gold in upkeep. Taxes must cover the expenses.')}`],
+  ['flask-conical', 'Research and colonies', `${step_('flask-conical', '<b>Libraries</b> and then <b>universities</b> produce research points. Spend them in the Research panel: better yields, doctor, guard post, navigation…')}
+    ${step_('ship', 'With Navigation, build a <b>harbour</b> on the main island, then a harbour on a nearby island to found a <b>colony</b>. The colony\'s roads start from its harbour.')}
+    ${step_('gem', 'Nobles demand spices and jewellery: they are only found on the spice island and the gold island.')}`],
+  ['flame', 'Seasons and fires', `${step_('snowflake', 'Almost nothing grows in winter: stock up on food in autumn.')}
+    ${step_('flame', 'Fire can break out and spread to neighbours. A <b>fire station</b> prevents fires in its area and puts them out quickly; a well allows a bucket brigade.')}
+    ${step_('layers', 'The <b>view layers</b> (button on the right) show water, markets, fire protection, beauty and satisfaction.')}`],
+];
+const HELP = L(HELP_FR, HELP_EN);
 function showHelp(i = 0) {
   const [ic, title, body] = HELP[i];
   view.showModal(`<div class="m-ic">${icon(ic)}</div><h2>${title}</h2>${body}<p class="center muted small">${i + 1} / ${HELP.length}</p>`, i < HELP.length - 1
-    ? [{ label: 'Passer', onClick: () => { settings.seenHelp = true; saveSettings(); } }, { label: 'Suivant', cls: 'primary', onClick: () => showHelp(i + 1) }]
-    : [{ label: 'C\'est parti', cls: 'primary', onClick: () => { settings.seenHelp = true; saveSettings(); } }]);
+    ? [{ label: L('Passer', 'Skip'), onClick: () => { settings.seenHelp = true; saveSettings(); } }, { label: L('Suivant', 'Next'), cls: 'primary', onClick: () => showHelp(i + 1) }]
+    : [{ label: L('C\'est parti', 'Let\'s go'), cls: 'primary', onClick: () => { settings.seenHelp = true; saveSettings(); } }]);
 }
 
 // ---------- Écran titre, sauvegardes et missions ----------
@@ -381,17 +411,17 @@ const SLOT_KEY = (i) => `developgames-slot-${i}`;
 const SCENARIO_ORDER = ['colons', 'hiver', 'incendie', 'pain', 'savoir', 'horizons', 'joyau', 'cathedrale'];
 
 function gameName(game) {
-  return game.scenario ? `Mission : ${findScenario(game.scenario).name}` : `Partie libre (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`;
+  return game.scenario ? `Mission${L(' :', ':')} ${findScenario(game.scenario).name}` : L(`Partie libre (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`, `Sandbox (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`);
 }
 
 function saveToSlot(i) {
   const meta = { date: Date.now(), day: g.day, era: g.era, pop: Math.floor(population(g)), name: gameName(g) };
   try {
-    localStorage.setItem(SLOT_KEY(i), JSON.stringify({ meta, data: serialize(g) }));
-    view.toast(`Partie sauvegardée dans l'emplacement ${i}.`, 'good');
+    store.setItem(SLOT_KEY(i), JSON.stringify({ meta, data: serialize(g) }));
+    view.toast(L(`Partie sauvegardée dans l'emplacement ${i}.`, `Game saved in slot ${i}.`), 'good');
     sound('coin');
   } catch {
-    view.toast('Impossible de sauvegarder (stockage du navigateur plein ?).', 'error');
+    view.toast(L('Impossible de sauvegarder (stockage plein ?).', 'Could not save (storage full?).'), 'error');
   }
 }
 
@@ -399,12 +429,12 @@ function slotList() {
   const list = [];
   try {
     const auto = load();
-    list.push({ key: 'auto', label: 'Sauvegarde automatique', meta: auto ? { date: Date.now(), day: auto.day, era: auto.era, pop: Math.floor(population(auto)), name: gameName(auto) } : null });
-  } catch { list.push({ key: 'auto', label: 'Sauvegarde automatique', meta: null }); }
+    list.push({ key: 'auto', label: L('Sauvegarde automatique', 'Autosave'), meta: auto ? { date: Date.now(), day: auto.day, era: auto.era, pop: Math.floor(population(auto)), name: gameName(auto) } : null });
+  } catch { list.push({ key: 'auto', label: L('Sauvegarde automatique', 'Autosave'), meta: null }); }
   for (const i of [1, 2, 3]) {
     let meta = null;
-    try { meta = JSON.parse(localStorage.getItem(SLOT_KEY(i)))?.meta || null; } catch { /* vide */ }
-    list.push({ key: String(i), label: `Emplacement ${i}`, meta });
+    try { meta = JSON.parse(store.getItem(SLOT_KEY(i)))?.meta || null; } catch { /* vide */ }
+    list.push({ key: String(i), label: `${L('Emplacement', 'Slot')} ${i}`, meta });
   }
   return list;
 }
@@ -412,18 +442,19 @@ function slotList() {
 function loadFrom(key) {
   let ng = null;
   try {
-    ng = key === 'auto' ? load() : deserialize(JSON.parse(localStorage.getItem(SLOT_KEY(key))).data);
+    ng = key === 'auto' ? load() : deserialize(JSON.parse(store.getItem(SLOT_KEY(key))).data);
   } catch { ng = null; }
-  if (!ng) { view.toast('Cette sauvegarde est illisible.', 'error'); return; }
+  if (!ng) { view.toast(L('Cette sauvegarde est illisible.', 'This save cannot be read.'), 'error'); return; }
   startGame(ng);
 }
 
 // Prépare une mission : carte, ville de départ construite par le joueur automatique, réglages.
 async function startScenario(id) {
   const sc = findScenario(id);
+  await adBreak();
   let ng = createGame(sc.seed, { difficulty: sc.difficulty });
   if (sc.prebuild) {
-    title.progress(`Préparation de la mission « ${sc.name} »…`);
+    title.progress(L(`Préparation de la mission « ${sc.name} »…`, `Preparing the mission “${sc.name}”…`));
     const bot = createBot(sc.seed, { game: ng, ...sc.prebuild });
     for (let d = 0; d < sc.prebuild.days; d++) {
       bot.day();
@@ -450,14 +481,14 @@ async function startScenario(id) {
   startGame(ng);
   view.showModal(`<div class="m-ic">${icon(sc.icon)}</div><h2>${sc.name}</h2><p class="center">${sc.intro}</p>
     <ul class="parts">${sc.goals.map((q) => `<li><span>${q.text}</span></li>`).join('')}</ul>
-    <p class="center muted small">${sc.days ? `Temps imparti : ${sc.days} jours.` : 'Pas de limite de temps.'} Difficulté : ${DIFFICULTIES[sc.difficulty].name.toLowerCase()}.</p>`,
-  [{ label: 'Commencer', cls: 'primary' }]);
+    <p class="center muted small">${sc.days ? L(`Temps imparti : ${sc.days} jours.`, `Time limit: ${sc.days} days.`) : L('Pas de limite de temps.', 'No time limit.')} ${L('Difficulté :', 'Difficulty:')} ${DIFFICULTIES[sc.difficulty].name.toLowerCase()}.</p>`,
+  [{ label: L('Commencer', 'Start'), cls: 'primary' }]);
 }
 
 const title = createTitle({
   hasSave: () => hasAutosave,
-  onContinue: () => { const ng = load(); if (ng) startGame(ng); else title.show('new'); },
-  onNew: (difficulty, seed) => startGame(createGame(seed, { difficulty })),
+  onContinue: () => { const ng = load(); if (ng) startGame(ng); else showTitle('new'); },
+  onNew: async (difficulty, seed) => { await adBreak(); startGame(createGame(seed, { difficulty })); },
   onScenario: (id) => startScenario(id),
   slots: slotList,
   onLoad: loadFrom,
@@ -465,9 +496,23 @@ const title = createTitle({
 });
 void ISLAND_KINDS; void clearSave;
 
+function showTitle(page) {
+  platform.gameplay(false);
+  title.show(page);
+}
+
+// Publicité éventuelle (portail de jeux) avant une nouvelle partie : le son est coupé pendant l'annonce.
+function adBreak() {
+  return new Promise((resolve) => platform.breakAd(
+    () => audio.setEnabled(false),
+    () => { audio.setEnabled(settings.sound); resolve(); },
+  ));
+}
+
 // ---------- Boucle ----------
 function startGame(ng) {
   title.hide();
+  platform.gameplay(true);
   hasAutosave = true;
   g = ng;
   ui.selected = null;
@@ -517,6 +562,7 @@ window.DG = {
   give(k, n) { if (k === 'gold') g.gold += n; else g.goods[k] += n; afterChange(); },
   days(n) { for (let i = 0; i < n; i++) step(g); afterChange(); },
   load(text) { startGame(deserialize(text)); },
+  draw() { renderer.draw(g, cam, { ...ui, speed: 0 }, 0); },
 };
 void costText; void TOOLS;
 
@@ -524,7 +570,8 @@ view.renderCats();
 view.renderItems();
 centerOnTownhall();
 afterChange();
-title.show();
+showTitle();
+platform.loaded();
 requestAnimationFrame(frame);
 
 // Mode hors ligne uniquement sur notre propre site (pas dans le cadre d'itch.io ou d'un autre portail).

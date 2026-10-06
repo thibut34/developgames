@@ -1,4 +1,6 @@
 // Données et réglages du jeu. Tout l'équilibrage se fait ici.
+import { EN } from './i18n.js';
+import en from './lang-en.js';
 
 export const TW = 64;            // largeur d'une case isométrique (pixels monde)
 export const TH = 32;            // hauteur d'une case isométrique
@@ -463,3 +465,22 @@ export const QUESTS = [
   { text: 'Passer à l\'ère de la Cité', check: (g) => [g.era, 4], reward: { gold: 2000 } },
   { text: 'Achever la Grande Cathédrale', check: (g, h) => [h.done('wonder'), 1], reward: { gold: 5000 } },
 ];
+
+// ---------- Version anglaise : les textes de lang-en.js remplacent les textes français ----------
+if (EN) {
+  SEASONS.forEach((s, i) => { s.name = en.seasons[i]; });
+  TERRAIN.forEach((t, i) => Object.assign(t, en.terrain[i]));
+  for (const k of GOOD_KEYS) GOODS[k].name = en.goods[k];
+  GOLD.name = en.gold;
+  CLASSES.forEach((c, i) => {
+    Object.assign(c, en.classes[i]);
+    for (const n of c.needs) if (n.label) n.label = en.needs[n.label] ?? n.label;
+  });
+  TAXES.forEach((t, i) => { t.name = en.taxes[i]; });
+  ERAS.forEach((e, i) => { e.name = en.eras[i]; });
+  for (const c of CATEGORIES) c.name = en.categories[c.id];
+  for (const t of TOOLS) Object.assign(t, en.tools[t.id]);
+  for (const [id, b] of Object.entries(BUILDINGS)) Object.assign(b, en.buildings[id]);
+  for (const t of TECHS) [t.name, t.desc] = en.techs[t.id];
+  QUESTS.forEach((q, i) => { q.text = en.quests[i]; });
+}
