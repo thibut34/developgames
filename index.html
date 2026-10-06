@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1e3324">
+  <title>DevelopGames</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="res" id="res-wood"><span class="ico">🪵</span><span class="val"></span><span class="delta"></span></div>
+    <div class="res" id="res-stone"><span class="ico">🪨</span><span class="val"></span><span class="delta"></span></div>
+    <div class="res" id="res-food"><span class="ico">🍞</span><span class="val"></span><span class="delta"></span></div>
+    <div class="res" id="res-gold"><span class="ico">🪙</span><span class="val"></span><span class="delta"></span></div>
+    <div class="res" id="res-pop"><span class="ico">👥</span><span class="val"></span><span class="delta"></span></div>
+    <div class="spacer"></div>
+    <span id="day"></span>
+    <div class="speed">
+      <button data-speed="0" title="Pause">⏸</button>
+      <button data-speed="1" class="active" title="Vitesse normale">1×</button>
+      <button data-speed="2" title="Vitesse ×2">2×</button>
+      <button data-speed="4" title="Vitesse ×4">4×</button>
+    </div>
+    <button id="new-game" title="Nouvelle partie">↻</button>
+  </header>
+
+  <canvas id="game"></canvas>
+
+  <aside id="info" hidden></aside>
+  <div id="toast"></div>
+  <nav id="toolbar"></nav>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
