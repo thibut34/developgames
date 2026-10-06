@@ -1,11 +1,12 @@
 // Interface HTML : barre du haut, barre d'outils, panneaux, info-bulles, fenêtres, messages.
 import {
   BUILDINGS, GOODS, GOOD_KEYS, GOLD, BAR_GOODS, TOOLS, CATEGORIES, ERAS, CLASSES, TERRAIN, CLEAR,
-  TAXES, QUESTS, SEASONS, FIRE, WORKFORCE,
+  TAXES, QUESTS, SEASONS, FIRE, WORKFORCE, TECHS,
 } from './config.js';
 import {
   storage, canAfford, amount, eraLocked, def, isWorking, houseNeeds, upgradeStatus, eraStatus,
   questProgress, buyPrice, sellPrice, tradeHasPost, dateText, season, capOf, isHouse, population,
+  lockReason, techStatus,
 } from './game.js';
 import { icon } from './icons.js';
 import { thumb } from './thumbs.js';
@@ -45,6 +46,8 @@ export function createUI(app) {
     <div class="tb-item cls" id="cls-${c}" style="--cls:${C.color}"><span class="dot"></span><b class="val"></b><span class="lbl">${C.name}</span></div>`).join('');
   $('#tb-gold').innerHTML = `<span class="ic-wrap gold">${icon('coins')}</span><b class="val"></b><span class="delta"></span>`;
   $('#tb-happy').innerHTML = `<span class="ic-wrap"></span><b class="val"></b>`;
+  $('#tb-rp').innerHTML = `<span class="ic-wrap rp">${icon('flask-conical')}</span><b class="val"></b>`;
+  $('#tb-rp').onclick = () => openPanel('research');
   for (const id of ['tb-goods', 'tb-pop']) $(`#${id}`).onclick = () => openPanel(id === 'tb-goods' ? 'production' : 'population');
   $('#tb-gold').onclick = () => openPanel('finances');
   $('#tb-happy').onclick = () => openPanel('population');
@@ -80,6 +83,9 @@ export function createUI(app) {
     $('#tb-date').innerHTML = `${icon(SEASONS[season(g)].icon)}<span class="date-text">${dateText(g)}</span>`;
     $('#tb-date').title = dateText(g);
     $('#era-name').textContent = ERAS[g.era].name;
+    $('#tb-rp .val').textContent = fmt(g.rp);
+    $('#tb-rp').title = `Points de recherche : ${fmt(g.rp)}`;
+    $('[data-panel="research"]').classList.toggle('ready', TECHS.some((t) => techStatus(g, t).ok));
     $('[data-panel="era"]').classList.toggle('ready', !!eraStatus(g)?.ok);
     refreshQuest();
   }
@@ -118,7 +124,7 @@ export function createUI(app) {
       return `<button class="item ${app.ui.tool === it.id ? 'active' : ''} ${locked ? 'locked' : ''}" data-id="${it.id}">
         ${visual}
         <span class="item-name">${esc(it.name)}</span>
-        <span class="item-cost">${locked ? `${icon('lock')}${ERAS[it.era].name}` : it.cost ? costHtml(g, it.cost) : ''}</span>
+        <span class="item-cost">${locked ? `${icon('lock')}${(it.era || 0) > g.era ? ERAS[it.era].name : 'Recherche'}` : it.cost ? costHtml(g, it.cost) : ''}</span>
       </button>`;
     }).join('');
     for (const b of document.querySelectorAll('.item')) {
@@ -138,7 +144,8 @@ export function createUI(app) {
         html += `<p class="row">${d.consumes ? Object.entries(d.consumes).map(([k, v]) => goodTag(k, v)).join('') + icon('chevron-right') : ''}${Object.entries(d.produces || {}).map(([k, v]) => goodTag(k, v)).join('')}<span class="muted">/ jour</span></p>`;
       }
       if (d.upkeep) html += `<p class="row muted">Entretien ${fmt1(d.upkeep)} or / jour</p>`;
-      if (eraLocked(app.g, id)) html += `<p class="warn">Débloqué à l'ère : ${ERAS[d.era].name}</p>`;
+      const lock = lockReason(app.g, id);
+      if (lock) html += `<p class="warn">${esc(lock)}</p>`;
     }
     const r = el.getBoundingClientRect();
     showTip(html, r.left + r.width / 2, r.top - 8, 'above');
@@ -410,6 +417,26 @@ export function createUI(app) {
           <button data-act="sell:${k}:10">Vendre 10<small>+${Math.floor(sellPrice(g, k) * 10)} or</small></button></td></tr>`;
       }
       return `${html}</table>`;
+    },
+
+    research(g) {
+      let html = head('Recherche', 'flask-conical', `${fmt(g.rp)} points de recherche disponibles`);
+      const rate = g.buildings.reduce((n, b) => n + (b.output?.research || 0), 0) * g.mods.research;
+      html += `<p class="muted small">Production : ${fmt1(rate)} point(s) par jour. Construisez des bibliothèques, puis des universités.</p>`;
+      ERAS.forEach((e, i) => {
+        const list = TECHS.filter((t) => t.era === i);
+        if (!list.length) return;
+        html += `<h3>${e.name}</h3><div class="techs">`;
+        for (const t of list) {
+          const s = techStatus(g, t);
+          const cls = s.done ? 'done' : s.ok ? 'ready' : t.era > g.era ? 'locked' : '';
+          html += `<div class="tech ${cls}"><div class="t-ic">${icon(s.done ? 'check' : t.icon)}</div><div class="t-body"><b>${esc(t.name)}</b><span>${esc(t.desc)}</span>`;
+          if (!s.done) html += `<span class="t-foot"><span class="c">${icon('flask-conical')}${t.cost}</span>${s.ok ? `<button class="primary" data-act="research:${t.id}">Rechercher</button>` : `<em>${esc(s.reason)}</em>`}</span>`;
+          html += '</div></div>';
+        }
+        html += '</div>';
+      });
+      return html;
     },
 
     log(g) {

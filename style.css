@@ -383,6 +383,21 @@ ol.eras li.current { background: var(--accent); color: var(--accent-ink); font-w
 .unlocks span { display: flex; align-items: center; gap: 4px; padding: 3px 9px 3px 3px; border-radius: 8px; background: var(--panel-2); font-size: 12px; }
 .unlocks img { width: 28px; height: 28px; }
 
+.tb-item .ic-wrap.rp { color: #9ec7f0; }
+.techs { display: flex; flex-direction: column; gap: 6px; }
+.tech { display: flex; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.tech .t-ic { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 9px; background: var(--panel-3); color: var(--muted); }
+.tech .t-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.tech .t-body > span { color: var(--muted); font-size: 12px; }
+.tech .t-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.tech .t-foot em { font-style: normal; font-size: 11px; color: var(--muted); text-align: right; }
+.tech .t-foot button { padding: 4px 10px; border-radius: 7px; border: 0; }
+.tech.ready { border-color: rgba(233, 196, 106, 0.5); }
+.tech.ready .t-ic { color: var(--accent); }
+.tech.done { opacity: 0.6; }
+.tech.done .t-ic { color: var(--good); }
+.tech.locked { opacity: 0.45; }
+
 .cls-card { padding: 10px 12px; margin: 8px 0; border-radius: 10px; background: var(--panel-2); border-left: 3px solid var(--cls); }
 .cls-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .cls-top .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cls); }

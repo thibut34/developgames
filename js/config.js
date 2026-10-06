@@ -99,6 +99,8 @@ export const CLASSES = [
       { service: 'chapel', label: 'Chapelle' },
       { service: 'tavern', label: 'Taverne' },
       { service: 'school', label: 'École' },
+      { service: 'health', label: 'Médecin' },
+      { service: 'police', label: 'Sécurité (poste de garde)' },
       { decor: 2, label: 'Beauté du quartier ≥ 2' },
     ],
   },
@@ -115,6 +117,8 @@ export const CLASSES = [
       { service: 'chapel', label: 'Chapelle' },
       { service: 'tavern', label: 'Taverne' },
       { service: 'school', label: 'École' },
+      { service: 'health', label: 'Médecin' },
+      { service: 'police', label: 'Sécurité (poste de garde)' },
       { decor: 4, label: 'Beauté du quartier ≥ 4' },
     ],
   },
@@ -306,6 +310,31 @@ export const BUILDINGS = {
     service: { type: 'chapel', r: 14 }, decor: { v: 5, r: 7 },
     desc: 'La merveille de votre cité : 60 jours de chantier. L\'achever, c\'est gagner la partie.', look: 'wonder',
   },
+  library: {
+    name: 'Bibliothèque', cat: 'service', era: 0, size: 1, cost: { wood: 20, planks: 10, gold: 80 }, workers: [0, 2],
+    produces: { research: 1 }, upkeep: 0.6,
+    desc: 'Des lettrés y étudient : +1 point de recherche par jour.', look: 'library', wall: '#d9c7a4', roof: '#4b5f4a', h: 17,
+  },
+  university: {
+    name: 'Université', cat: 'service', era: 2, size: 2, cost: { planks: 40, stone: 60, tools: 10, gold: 600 }, workers: [2, 3],
+    produces: { research: 4 }, upkeep: 3,
+    desc: '+4 points de recherche par jour.', look: 'university', wall: '#e8dcc4', roof: '#7a2f2a', h: 24,
+  },
+  doctor: {
+    name: 'Médecin', cat: 'service', era: 1, tech: 'medicine', size: 1, cost: { planks: 10, stone: 10, gold: 120 }, workers: [1, 1],
+    service: { type: 'health', r: 7 }, upkeep: 1,
+    desc: 'Soigne les maisons à 7 cases ou moins et les protège des épidémies.', look: 'doctor', wall: '#eef0ea', roof: '#3f7a6a', h: 16,
+  },
+  hospital: {
+    name: 'Hôpital', cat: 'service', era: 3, tech: 'surgery', size: 2, cost: { stone: 80, tools: 15, gold: 800 }, workers: [2, 3],
+    service: { type: 'health', r: 12 }, upkeep: 3,
+    desc: 'Soigne les maisons à 12 cases ou moins.', look: 'hospital', wall: '#f1efe8', roof: '#3f6f8a', h: 22,
+  },
+  guardpost: {
+    name: 'Poste de garde', cat: 'service', era: 1, tech: 'militia', size: 1, cost: { planks: 10, stone: 15, gold: 100 }, workers: [1, 2],
+    service: { type: 'police', r: 7 }, upkeep: 1, fire: 0,
+    desc: 'Assure la sécurité des maisons à 7 cases ou moins et limite les vols.', look: 'guardpost', wall: '#a49a8a', roof: '#3d4a6a', h: 18,
+  },
   // --- Beauté ---
   garden: {
     name: 'Jardin', cat: 'deco', era: 0, size: 1, cost: { wood: 4, gold: 15 }, decor: { v: 1, r: 3 }, upkeep: 0.1, fire: 0,
@@ -343,6 +372,37 @@ export const FIRE = {
   stationDays: 2,        // jours pour que les pompiers éteignent
   bucketCost: 15,        // chaîne de seaux (près d'un puits)
 };
+
+// ---------- Recherche ----------
+// Les technologies s'achètent avec des points de recherche (bibliothèques, universités).
+// effect : prod (multiplicateur par bâtiment), range (+cases de portée par service), fireHouse, storage,
+// upkeep, tax, sat, research, wonderTime. Les bâtiments avec « tech » sont débloqués par la technologie.
+export const TECHS = [
+  { id: 'axes', name: 'Haches affûtées', era: 0, cost: 25, icon: 'axe', desc: 'Bûcherons +25 %.', effect: { prod: { lumber: 1.25 } } },
+  { id: 'nets', name: 'Grands filets', era: 0, cost: 35, icon: 'fish', desc: 'Pêcheurs +25 %.', effect: { prod: { fisher: 1.25 } } },
+  { id: 'masonry', name: 'Maçonnerie', era: 0, cost: 50, icon: 'brick-wall', desc: 'Risque d\'incendie des maisons −40 %.', effect: { fireHouse: 0.6 } },
+  { id: 'accounting', name: 'Comptabilité', era: 0, cost: 60, icon: 'receipt', desc: 'Stockage +50 par marchandise.', effect: { storage: 50 } },
+  { id: 'plough', name: 'Charrue lourde', era: 1, cost: 120, icon: 'wheat', req: ['axes'], desc: 'Fermes céréalières +25 %.', effect: { prod: { farm: 1.25 } } },
+  { id: 'watermill', name: 'Meunerie', era: 1, cost: 150, icon: 'cog', req: ['plough'], desc: 'Moulins et boulangeries +20 %.', effect: { prod: { mill: 1.2, bakery: 1.2 } } },
+  { id: 'loom', name: 'Métier à tisser', era: 1, cost: 160, icon: 'shirt', desc: 'Bergeries et tisserands +25 %.', effect: { prod: { sheep: 1.25, weaver: 1.25 } } },
+  { id: 'medicine', name: 'Médecine', era: 1, cost: 140, icon: 'stethoscope', desc: 'Débloque le médecin.', effect: {} },
+  { id: 'militia', name: 'Milice', era: 1, cost: 130, icon: 'shield-check', desc: 'Débloque le poste de garde.', effect: {} },
+  { id: 'firepump', name: 'Pompe à incendie', era: 1, cost: 180, icon: 'droplets', req: ['masonry'], desc: 'Portée des postes d\'incendie +2.', effect: { range: { fire: 2 } } },
+  { id: 'administration', name: 'Administration', era: 2, cost: 300, icon: 'landmark', req: ['accounting'], desc: 'Entretien des bâtiments −15 %.', effect: { upkeep: 0.85 } },
+  { id: 'hops', name: 'Houblon', era: 2, cost: 280, icon: 'beer', desc: 'Brasseries +30 %.', effect: { prod: { brewery: 1.3 } } },
+  { id: 'blast', name: 'Haut fourneau', era: 2, cost: 380, icon: 'flame-kindling', desc: 'Charbonniers, fonderies et forges +25 %.', effect: { prod: { charcoal: 1.25, smelter: 1.25, forge: 1.25 } } },
+  { id: 'cadastre', name: 'Cadastre', era: 2, cost: 400, icon: 'map', req: ['administration'], desc: 'Impôts +10 %.', effect: { tax: 1.1 } },
+  { id: 'hygiene', name: 'Hygiène', era: 2, cost: 420, icon: 'droplets', req: ['medicine'], desc: 'Satisfaction de tous les habitants +5 %.', effect: { sat: 0.05 } },
+  { id: 'navigation', name: 'Navigation', era: 2, cost: 500, icon: 'compass', desc: 'Débloque le port et la colonisation des îles voisines.', effect: {} },
+  { id: 'printing', name: 'Imprimerie', era: 3, cost: 700, icon: 'book-open', req: ['hygiene'], desc: 'Recherche +30 % et portée des écoles +2.', effect: { research: 1.3, range: { school: 2 } } },
+  { id: 'surgery', name: 'Chirurgie', era: 3, cost: 750, icon: 'heart-pulse', req: ['medicine'], desc: 'Débloque l\'hôpital.', effect: {} },
+  { id: 'vines', name: 'Taille de la vigne', era: 3, cost: 650, icon: 'grape', desc: 'Vignobles et pressoirs +25 %.', effect: { prod: { vineyard: 1.25, winepress: 1.25 } } },
+  { id: 'colonial', name: 'Commerce colonial', era: 3, cost: 900, icon: 'ship', req: ['navigation'], desc: 'Débloque plantations d\'épices et mines d\'or sur les îles.', effect: {} },
+  { id: 'goldsmith', name: 'Orfèvrerie', era: 3, cost: 1000, icon: 'gem', req: ['colonial'], desc: 'Débloque l\'orfèvre (bijoux).', effect: {} },
+  { id: 'banking', name: 'Banque', era: 4, cost: 1500, icon: 'coins', req: ['cadastre'], desc: 'Impôts +15 %.', effect: { tax: 1.15 } },
+  { id: 'architecture', name: 'Architecture', era: 4, cost: 1800, icon: 'castle', desc: 'Chantier de la Grande Cathédrale −35 %.', effect: { wonderTime: 0.65 } },
+  { id: 'astronomy', name: 'Astronomie', era: 4, cost: 2400, icon: 'star', req: ['printing'], desc: 'Satisfaction +5 % et recherche +30 %.', effect: { sat: 0.05, research: 1.3 } },
+];
 
 // ---------- Objectifs guidés ----------
 // check(g, h) renvoie [actuel, objectif].

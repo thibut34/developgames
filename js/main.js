@@ -1,7 +1,7 @@
 import { DAY_MS, BUILDINGS, TOOLS, ERAS, GOODS, CLASSES } from './config.js';
 import {
   createGame, load, save, clearSave, step, place, placeRoadPath, roadPathCost, applyArea, buildingAt,
-  upgradeHouse, togglePause, toggleLock, bucketBrigade, advanceEra, buy, sell, acceptOffer, eraLocked,
+  upgradeHouse, togglePause, toggleLock, bucketBrigade, advanceEra, buy, sell, acceptOffer, eraLocked, research, lockReason,
   serialize, deserialize, def, costText, demolishBuilding, rebuild, population, resName,
 } from './game.js';
 import { P } from './iso.js';
@@ -54,7 +54,7 @@ const anchor = (b) => { const s = def(b).size; return P(b.x + s / 2, b.y + s / 2
 // ---------- Outils ----------
 function selectTool(id) {
   if (BUILDINGS[id] && eraLocked(g, id)) {
-    view.toast(`${BUILDINGS[id].name} : débloqué à l'ère « ${ERAS[BUILDINGS[id].era].name} ».`, 'error');
+    view.toast(`${BUILDINGS[id].name} : ${lockReason(g, id).toLowerCase()}.`, 'error');
     sound('error');
     return;
   }
@@ -170,6 +170,7 @@ const actions = {
     afterChange();
   },
   advanceEra() { if (advanceEra(g)) afterChange(); },
+  research(id) { const r = research(g, id); if (r.ok) { view.renderItems(); fx.sparkle(...P(g.buildings[0].x + 1, g.buildings[0].y + 1)); } else fail(r.reason); afterChange(); },
   setTax(i) { g.tax = Number(i); sound('click'); afterChange(); },
   buy(k, n) { const r = buy(g, k, Number(n)); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },
   sell(k, n) { const r = sell(g, k, Number(n)); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },

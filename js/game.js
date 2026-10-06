@@ -1,7 +1,7 @@
 // Moteur du jeu : état, construction, routes, simulation jour par jour, incendies, événements, sauvegarde.
 import {
   MAP, T, TERRAIN, CLEAR, GOODS, GOOD_KEYS, START, BASE_STORAGE, STORAGE_PER_ERA, WORKFORCE, ROAD_COST,
-  CLASSES, TAXES, ERAS, BUILDINGS, WORK_PRIORITY, QUESTS, DAYS_PER_SEASON, SEASONS, FIRE,
+  CLASSES, TAXES, ERAS, BUILDINGS, WORK_PRIORITY, QUESTS, DAYS_PER_SEASON, SEASONS, FIRE, TECHS,
 } from './config.js';
 import { generateMap } from './world.js';
 
@@ -35,6 +35,8 @@ export function createGame(seed = Math.floor(Math.random() * 1e9)) {
     won: false,
     stats: { built: 0, fires: 0, maxPop: 0 },
     alerts: {},
+    tech: [],
+    rp: 0,
   };
   const c = MAP / 2 - 1;
   g.buildings.push({ id: g.nextId++, type: 'townhall', x: c, y: c, level: 1 });
@@ -56,6 +58,7 @@ function init(g) {
   g.supply = CLASSES.map(() => ({}));
   g.flow = { prod: {}, use: {} };
   g.fin = { taxes: 0, upkeep: 0, other: 0 };
+  computeMods(g);
   rebuild(g);
   for (const b of g.buildings) if (isHouse(b)) b.sat = b.connected ? houseSat(g, b) : 0;
 }
@@ -79,7 +82,7 @@ export const isHouse = (b) => b.type === 'house';
 export const capOf = (b) => (isHouse(b) ? CLASSES[b.level - 1].cap : 0);
 export const population = (g) => g.cls.reduce((a, b) => a + b, 0);
 export const storage = (g) =>
-  g.buildings.reduce((n, b) => n + (b.build ? 0 : def(b).storage || 0), BASE_STORAGE + g.era * STORAGE_PER_ERA);
+  g.buildings.reduce((n, b) => n + (b.build ? 0 : def(b).storage || 0), BASE_STORAGE + g.era * STORAGE_PER_ERA + g.mods.storage);
 export const upkeepOf = (b) => (b.build ? 0 : def(b).upkeep || 0);
 export const workersNeeded = (b) => (def(b).workers ? def(b).workers[1] : 0);
 
@@ -206,7 +209,7 @@ function computeCoverage(g) {
   for (const b of g.buildings) {
     b.cover = {};
     for (const s of services) {
-      if (footprintDist(b, s) <= def(s).service.r) b.cover[def(s).service.type] = true;
+      if (footprintDist(b, s) <= serviceRange(g, def(s))) b.cover[def(s).service.type] = true;
     }
     if (isHouse(b)) {
       b.decor = decors.reduce((n, d) => n + (footprintDist(b, d) <= def(d).decor.r ? def(d).decor.v : 0), 0);
@@ -232,7 +235,7 @@ export function houseNeeds(g, b, level = b.level) {
 export function houseSat(g, b, level = b.level) {
   const list = houseNeeds(g, b, level);
   const avg = list.reduce((n, x) => n + x.value, 0) / list.length;
-  return Math.max(0, Math.min(1, avg + TAXES[g.tax].sat - (g.broke ? 0.1 : 0)));
+  return Math.max(0, Math.min(1, avg + TAXES[g.tax].sat + g.mods.sat - (g.broke ? 0.1 : 0)));
 }
 
 // Peut-elle passer au niveau supérieur ? Renvoie la raison sinon.
@@ -269,11 +272,19 @@ export const costText = (cost = {}) =>
 
 // ---------- Construction ----------
 
-export const eraLocked = (g, type) => (BUILDINGS[type].era || 0) > g.era;
+// Raison pour laquelle un bâtiment n'est pas encore disponible (ère ou technologie), sinon null.
+export function lockReason(g, type) {
+  const d = BUILDINGS[type];
+  if ((d.era || 0) > g.era) return `Débloqué à l'ère : ${ERAS[d.era].name}`;
+  if (d.tech && !g.tech.includes(d.tech)) return `Nécessite la technologie : ${TECHS.find((t) => t.id === d.tech).name}`;
+  return null;
+}
+export const eraLocked = (g, type) => !!lockReason(g, type);
 
 export function canPlace(g, type, x, y) {
   const d = BUILDINGS[type];
-  if (eraLocked(g, type)) return { ok: false, reason: `Débloqué à l'ère : ${ERAS[d.era].name}` };
+  const lock = lockReason(g, type);
+  if (lock) return { ok: false, reason: lock };
   if (d.unique && g.buildings.some((b) => b.type === type)) return { ok: false, reason: 'Déjà construit' };
   for (let dy = 0; dy < d.size; dy++) {
     for (let dx = 0; dx < d.size; dx++) {
@@ -299,7 +310,7 @@ export function place(g, type, x, y) {
   pay(g, d.cost);
   const b = { id: g.nextId++, type, x, y, level: 1 };
   if (type === 'house') b.res = 0;
-  if (d.buildDays) b.build = d.buildDays;
+  if (d.buildDays) b.build = Math.round(d.buildDays * g.mods.wonderTime);
   g.buildings.push(b);
   g.stats.built++;
   rebuild(g);
@@ -404,6 +415,46 @@ export function bucketBrigade(g, b) {
   return { ok: true };
 }
 
+// ---------- Recherche ----------
+
+// Additionne les effets de toutes les technologies découvertes.
+export function computeMods(g) {
+  const m = { prod: {}, range: {}, fireHouse: 1, storage: 0, upkeep: 1, tax: 1, sat: 0, research: 1, wonderTime: 1 };
+  for (const id of g.tech) {
+    const e = TECHS.find((t) => t.id === id)?.effect || {};
+    for (const [k, v] of Object.entries(e.prod || {})) m.prod[k] = (m.prod[k] || 1) * v;
+    for (const [k, v] of Object.entries(e.range || {})) m.range[k] = (m.range[k] || 0) + v;
+    for (const k of ['fireHouse', 'upkeep', 'tax', 'research', 'wonderTime']) if (e[k]) m[k] *= e[k];
+    if (e.storage) m.storage += e.storage;
+    if (e.sat) m.sat += e.sat;
+  }
+  g.mods = m;
+}
+
+export const serviceRange = (g, d) => d.service.r + (g.mods.range[d.service.type] || 0);
+
+export function techStatus(g, t) {
+  if (g.tech.includes(t.id)) return { done: true };
+  if (t.era > g.era) return { ok: false, reason: `Ère requise : ${ERAS[t.era].name}` };
+  const missing = (t.req || []).filter((r) => !g.tech.includes(r));
+  if (missing.length) return { ok: false, reason: `Nécessite : ${missing.map((r) => TECHS.find((x) => x.id === r).name).join(', ')}` };
+  if (g.rp < t.cost) return { ok: false, reason: `Il faut ${t.cost} points de recherche`, affordable: false };
+  return { ok: true };
+}
+
+export function research(g, id) {
+  const t = TECHS.find((x) => x.id === id);
+  const s = techStatus(g, t);
+  if (!s.ok) return s;
+  g.rp -= t.cost;
+  g.tech.push(id);
+  computeMods(g);
+  rebuild(g);
+  notify(g, `Découverte : ${t.name}. ${t.desc}`, 'good', 'quest');
+  checkQuests(g);
+  return { ok: true };
+}
+
 // ---------- Ères ----------
 
 export function eraStatus(g) {
@@ -483,9 +534,9 @@ export function checkQuests(g) {
 
 // ---------- Incendies ----------
 
-function fireRisk(b) {
+function fireRisk(g, b) {
   const d = def(b);
-  if (isHouse(b)) return [1, 0.8, 0.6, 0.5][b.level - 1];
+  if (isHouse(b)) return [1, 0.8, 0.6, 0.5][b.level - 1] * g.mods.fireHouse;
   return d.fire ?? 1;
 }
 
@@ -507,7 +558,7 @@ function updateFires(g) {
       continue;
     }
     for (const o of g.buildings) {
-      if (o.fire > 0 || o === b || fireRisk(o) <= 0 || o.cover?.fire || o.build) continue;
+      if (o.fire > 0 || o === b || fireRisk(g, o) <= 0 || o.cover?.fire || o.build) continue;
       if (footprintDist(o, b) <= 1 && Math.random() < FIRE.spreadChance) ignite(g, o, true);
     }
     if (b.fire > FIRE.burnDays) {
@@ -522,7 +573,7 @@ function updateFires(g) {
   // Nouveaux départs de feu
   for (const b of g.buildings) {
     if (b.fire > 0 || b.build || !b.cover || b.cover.fire) continue;
-    const risk = fireRisk(b);
+    const risk = fireRisk(g, b);
     if (risk <= 0) continue;
     if (Math.random() < FIRE.baseRisk * risk * (b.cover.well ? FIRE.wellFactor : 1)) ignite(g, b, false);
   }
@@ -581,17 +632,29 @@ const EVENTS = [
     },
   },
   {
-    w: 1,
+    // Épidémie : le médecin protège, le puits limite les dégâts.
+    w: 1.5,
     can: (g) => g.era >= 1 && population(g) >= 100,
     run(g) {
       let lost = 0;
       for (const b of g.buildings) {
-        if (!isHouse(b) || b.cover.well) continue;
-        const l = Math.floor(b.res * 0.4);
+        if (!isHouse(b) || b.cover.health) continue;
+        const l = Math.floor(b.res * (b.cover.well ? 0.2 : 0.45));
         b.res -= l;
         lost += l;
       }
-      notify(g, lost ? `Épidémie : ${lost} habitants sans eau potable sont partis.` : 'Une épidémie a été évitée grâce aux puits.', lost ? 'danger' : 'good', lost ? 'bad' : 'good');
+      notify(g, lost ? `Épidémie : ${lost} habitants sont morts ou ont fui. Un médecin protégerait les quartiers.` : 'Une épidémie a été enrayée par les médecins.', lost ? 'danger' : 'good', lost ? 'bad' : 'good');
+    },
+  },
+  {
+    // Vols : les maisons aisées sans poste de garde sont la cible des voleurs.
+    w: 2,
+    can: (g) => g.buildings.filter((b) => isHouse(b) && b.level >= 2 && !b.cover.police).length >= 6,
+    run(g) {
+      const n = g.buildings.filter((b) => isHouse(b) && b.level >= 2 && !b.cover.police).length;
+      const lost = Math.min(Math.floor(g.gold * 0.3), n * 12);
+      g.gold -= lost;
+      notify(g, `Vague de cambriolages dans ${n} maisons sans poste de garde : −${lost} or.`, 'danger', 'bad');
     },
   },
   {
@@ -651,9 +714,10 @@ export function step(g) {
       eff *= 1 + (d.fertile - 1) * (n / (d.size * d.size));
     }
     if (g.broke) eff *= 0.5;
+    eff *= g.mods.prod[b.type] || 1;
     // Pas la peine de produire si l'entrepôt est plein
     const outs = Object.keys(d.produces);
-    b.full = outs.every((k) => k !== 'gold' && g.goods[k] >= cap - 0.01);
+    b.full = outs.every((k) => g.goods[k] !== undefined && g.goods[k] >= cap - 0.01);
     if (b.full || eff <= 0) continue;
     if (d.consumes) {
       let ratio = 1;
@@ -668,6 +732,7 @@ export function step(g) {
     b.output = {};
     for (const [k, v] of Object.entries(d.produces)) {
       if (k === 'gold') { g.gold += v * eff; g.fin.other = (g.fin.other || 0) + v * eff; }
+      else if (k === 'research') g.rp += v * eff * g.mods.research;
       else g.goods[k] = Math.min(cap, g.goods[k] + v * eff);
       add(prod, k, v * eff);
       b.output[k] = v * eff;
@@ -727,7 +792,7 @@ export function step(g) {
     if (!b.connected) b.res = Math.max(0, (b.res || 0) - 0.2);
     else if (sat >= 0.5) b.res = Math.min(capH, (b.res || 0) + 0.12 + 0.18 * sat);
     else if (sat < 0.35) b.res = Math.max(0, b.res - 0.15);
-    taxes += b.res * C.tax * TAXES[g.tax].mult * (0.5 + 0.5 * sat);
+    taxes += b.res * C.tax * TAXES[g.tax].mult * g.mods.tax * (0.5 + 0.5 * sat);
     satSum += sat * b.res;
     resSum += b.res;
     if (!b.lock && (g.day + b.id) % 5 === 0 && upgradeStatus(g, b).ok) upgradeHouse(g, b);
@@ -735,7 +800,7 @@ export function step(g) {
   g.happiness = resSum ? (satSum / resSum) * 100 : 60;
 
   // Finances
-  const upkeep = g.buildings.reduce((n, b) => n + upkeepOf(b), 0);
+  const upkeep = g.buildings.reduce((n, b) => n + upkeepOf(b), 0) * g.mods.upkeep;
   g.gold += taxes - upkeep;
   g.fin = { taxes, upkeep, other: g.fin.other || 0 };
   g.lastFin = { ...g.fin };
@@ -784,6 +849,7 @@ export function serialize(g) {
     buildings: g.buildings.map(({ id, type, x, y, level, res, lock, paused, fire, build }) => ({ id, type, x, y, level, res, lock, paused, fire, build })),
     goods: g.goods, gold: g.gold, day: g.day, era: g.era, tax: g.tax, quest: g.quest,
     log: g.log.slice(0, 50), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats, alerts: g.alerts,
+    tech: g.tech, rp: g.rp,
   });
 }
 
@@ -795,6 +861,8 @@ export function deserialize(text) {
   for (const i of d.roads) g.roads[i] = 1;
   for (const k of GOOD_KEYS) g.goods[k] ??= 0;
   g.alerts ??= {};
+  g.tech ??= [];
+  g.rp ??= 0;
   init(g);
   return g;
 }

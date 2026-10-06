@@ -2,7 +2,7 @@
 // garde assez d'ouvriers de chaque classe, commerce et change d'ère tout seul.
 // Utilisé par tests/simulation.html (ou depuis la console : (await import('/tests/bot.js')).simulate(42, 3000)).
 import * as m from '../js/game.js';
-import { MAP, BUILDINGS, CLASSES, WORKFORCE, GOOD_KEYS } from '../js/config.js';
+import { MAP, BUILDINGS, CLASSES, WORKFORCE, GOOD_KEYS, TECHS } from '../js/config.js';
 
 export function createBot(seed) {
   const g = m.createGame(seed);
@@ -113,6 +113,10 @@ export function createBot(seed) {
     cover('well', 'well', (b) => b.type === 'house');
     if (g.day > 25) cover('firestation', 'fire', (b) => b.type !== 'townhall' && BUILDINGS[b.type].fire !== 0);
     ensure('warehouse', 1 + g.era * 2);
+    if (g.day > 20) ensure('library', 1 + g.era);
+    // Recherche : la technologie disponible la moins chère.
+    const tech = TECHS.filter((t) => m.techStatus(g, t).ok).sort((a, b) => a.cost - b.cost)[0];
+    if (tech) m.research(g, tech.id);
 
     if (!saving) {
       if (g.era >= 1) {
@@ -126,6 +130,8 @@ export function createBot(seed) {
         ensure('sheep', count('weaver'));
         cover('market', 'market', (b) => b.type === 'house');
         cover('chapel', 'chapel', (b) => b.type === 'house' && b.level >= 1 && g.era >= 1);
+        cover('doctor', 'health', (b) => b.type === 'house' && b.level >= 2);
+        cover('guardpost', 'police', (b) => b.type === 'house' && b.level >= 2);
       }
       if (g.era >= 2) {
         const beer = bu * 0.04 + n * 0.03 + 0.3;
@@ -139,6 +145,7 @@ export function createBot(seed) {
         cover('school', 'school', (b) => b.type === 'house' && b.level >= 2);
         if (!g.buildings[0].cover.guard) tryPlace('tower', g.buildings[0]);
         ensure('trading', 1);
+        ensure('university', g.era - 1);
         decorate(2, 2);
       }
       if (g.era >= 3) {
