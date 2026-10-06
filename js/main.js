@@ -608,9 +608,12 @@ view.renderCats();
 view.renderItems();
 centerOnTownhall();
 afterChange();
-// Sur un portail, un nouveau joueur entre directement dans le jeu (avec l'aide), sans passer par le menu.
-if (platform.name !== 'web' && !hasAutosave) { startGame(g); showHelp(); } else showTitle();
+// Sur un portail, on entre directement dans le jeu, sans passer par le menu : un nouveau joueur avec l'aide,
+// un joueur qui revient dans sa partie sauvegardée (le menu reste accessible dans les options).
+// Le chargement est terminé avant le début de la partie (ordre attendu par CrazyGames).
 platform.loaded();
+if (platform.name === 'web') showTitle();
+else { const isNew = !hasAutosave; startGame(g); if (isNew) showHelp(); }
 requestAnimationFrame(frame);
 
 // Mode hors ligne uniquement sur notre propre site (pas dans le cadre d'itch.io ou d'un autre portail).
