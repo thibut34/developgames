@@ -1,5 +1,5 @@
 // Portails de jeux. Sur CrazyGames, le SDK sert à sauvegarder (compte du joueur), à signaler
-// les phases de jeu et à afficher des publicités aux pauses naturelles. Ailleurs, rien ne change.
+// les phases de jeu et à proposer une publicité facultative contre une récompense. Ailleurs, rien ne change.
 // Activation : <html data-platform="crazygames"> (ajouté dans le zip CrazyGames) ou ?platform=crazygames.
 
 const wanted = document.documentElement.dataset.platform
@@ -7,8 +7,8 @@ const wanted = document.documentElement.dataset.platform
 
 let sdk = null;
 let playing = false;
-let lastAd = performance.now();
-const AD_GAP_MS = 4 * 60 * 1000;   // au plus une publicité toutes les 4 minutes
+let nextReward = 0;
+const REWARD_GAP_MS = 5 * 60 * 1000;   // une récompense au plus toutes les 5 minutes
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -50,15 +50,16 @@ export const platform = {
 
   happy() { try { sdk?.game.happytime(); } catch { /* rien */ } },
 
-  // Publicité entre deux parties. done() est toujours appelé, publicité ou pas.
-  breakAd(onStart, done) {
-    if (!sdk || performance.now() - lastAd < AD_GAP_MS) { done(); return; }
-    lastAd = performance.now();
+  // Publicité proposée au joueur (jamais imposée) : il choisit de la regarder contre une récompense.
+  get canReward() { return !!sdk && performance.now() >= nextReward; },
+  get rewardWait() { return Math.max(0, Math.ceil((nextReward - performance.now()) / 60000)); },
+  rewardAd(onStart, done) {
+    if (!sdk) { done(false); return; }
     let finished = false;
-    const end = () => { if (!finished) { finished = true; done(); } };
+    const end = (ok) => { if (!finished) { finished = true; if (ok) nextReward = performance.now() + REWARD_GAP_MS; done(ok); } };
     try {
-      sdk.ad.requestAd('midgame', { adStarted: onStart, adFinished: end, adError: end });
-    } catch { end(); }
+      sdk.ad.requestAd('rewarded', { adStarted: onStart, adFinished: () => end(true), adError: () => end(false) });
+    } catch { end(false); }
   },
 
   // Stockage : compte CrazyGames si disponible, sinon le navigateur.

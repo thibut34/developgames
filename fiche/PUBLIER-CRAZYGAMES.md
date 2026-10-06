@@ -1,33 +1,51 @@
 # Publier DevelopGames sur CrazyGames
 
-Tout est prêt côté jeu : le jeu est en anglais et en français, le SDK CrazyGames est intégré
-(sauvegarde dans le compte du joueur, phases de jeu, publicités entre deux parties) et le zip
-se refabrique tout seul à chaque mise à jour.
+Tout est prêt : il te reste seulement à créer ton compte et à remplir le formulaire avec ce qui suit.
+(Je ne crée pas de compte et je ne me connecte à rien à ta place.)
 
-## Ce que tu dois faire (10 minutes)
+## Étapes
 
-1. **Crée ton compte développeur** sur https://developer.crazygames.com (c'est toi qui le fais :
-   je ne crée pas de compte et je ne me connecte à rien à ta place).
+1. **Crée ton compte développeur** : https://developer.crazygames.com
 2. **Télécharge le zip du jeu** : https://thibut34.github.io/developgames/developgames-crazygames.zip
-   (il est mis à jour automatiquement à chaque nouvelle version).
-3. Dans le portail développeur : **Submit a game** → type **HTML5**, puis envoie le zip.
-4. Remplis la fiche avec les textes ci-dessous (en anglais : CrazyGames est un site international).
-5. **Images** : envoie les 3 couvertures de ce dossier :
-   - `cover-1920x1080.png` (paysage)
-   - `cover-800x1200.png` (portrait)
-   - `cover-800x800.png` (carré)
-6. Options à cocher :
-   - **SDK** : oui, version HTML5 v3.
-   - **Data Module** : « Yes, using the Data Module » (sinon les sauvegardes ne suivent pas le compte du joueur).
-   - **Orientation** : paysage (landscape).
-   - **Mobile** : tu peux cocher mobile, le jeu se joue au doigt, mais l'expérience est meilleure sur ordinateur.
-7. Lance la **vérification (QA tool)** proposée par le portail, puis envoie pour validation.
+   (il est refait automatiquement à chaque mise à jour du jeu ; pour une nouvelle version, renvoie simplement ce zip).
+3. **Submit a game** → **HTML5** → envoie le zip.
+4. **Textes** : copie-colle ceux de la section « Fiche » plus bas.
+5. **Images** (dans ce dossier `fiche`) :
+   - Landscape 1920×1080 : `cover-1920x1080.png`
+   - Portrait 800×1200 : `cover-800x1200.png`
+   - Square 800×800 : `cover-800x800.png`
+6. **Vidéos** (dans ce dossier, 18 secondes, sans son, commencent par l'image de couverture) :
+   - Landscape : `video-1920x1080.mp4`
+   - Portrait : `video-1080x1620.mp4`
+7. **Options du formulaire** :
+   - SDK : **oui**, HTML5 SDK v3.
+   - Data Module : **« Yes, using the Data Module »** (les sauvegardes suivent le compte du joueur).
+   - Publicités : **rewarded ads uniquement** (aucune publicité imposée, voir plus bas).
+   - Orientation : **landscape**.
+   - Mobile : oui si tu veux (le jeu se joue au doigt), l'expérience reste meilleure sur ordinateur.
+   - Langues : anglais et français.
+8. Lance le **QA tool** proposé par le portail, puis envoie pour validation.
 
-CrazyGames commence en général par un **Basic Launch** (test auprès d'une partie des joueurs, sans revenus).
-Si les chiffres sont bons (temps de jeu, retours), ils proposent le **Full Launch** avec les revenus
-publicitaires : le jeu est déjà prêt pour ça.
+CrazyGames commence en général par un **Basic Launch** (une partie des joueurs, sans revenus).
+Si le jeu plaît, ils proposent le **Full Launch** avec les revenus publicitaires : rien à changer, c'est déjà intégré.
 
-## Textes de la fiche (anglais)
+## Publicités : c'est le joueur qui choisit
+
+- Aucune publicité imposée, jamais.
+- Un bouton **cadeau** (dans la colonne de droite, il clignote quand il est disponible) propose :
+  « Regardez une courte publicité et recevez de l'or pour votre cité ».
+- Le joueur peut refuser. S'il accepte, le jeu se met en pause et le son se coupe pendant la publicité.
+- Récompense : au moins 250 or, plus si la ville rapporte beaucoup d'impôts. Un bonus au plus toutes les 5 minutes.
+- Ce bouton n'existe que sur CrazyGames (pas sur GitHub Pages).
+
+## Ce qui se passe pour un joueur sur CrazyGames
+
+- Un nouveau joueur arrive **directement dans le jeu** avec le guide « Comment jouer » (CrazyGames préfère éviter les menus au lancement).
+  Un joueur qui revient retrouve le menu avec « Continuer ».
+- Langue : celle du navigateur, modifiable dans le menu principal ou les options.
+- Sauvegardes dans le compte CrazyGames (boutons Exporter / Importer masqués, inutiles là-bas).
+
+## Fiche (en anglais)
 
 **Title** : DevelopGames
 
@@ -52,19 +70,6 @@ Found a hamlet on a wild island and grow it into a thriving city.
 - Keyboard: arrows to move, R road, X demolish, Space pause.
 - Touch: tap to build, drag to move, pinch to zoom.
 
-**Category** : Strategy (ou « Simulation » / city building)
+**Category** : Strategy (ou Simulation)
 
 **Tags** : city builder, strategy, simulation, medieval, management, building, economy, isometric
-
-## Vidéo (facultative au début)
-
-CrazyGames apprécie une courte vidéo (15 à 20 s, 1080p, paysage et portrait, sans son ni texte,
-qui commence par l'image de couverture). Tu peux l'ajouter plus tard ; dis-le-moi si tu veux que
-je prépare une séquence de jeu à filmer.
-
-## Bon à savoir
-
-- Le jeu lit la langue du navigateur ; le joueur peut changer de langue dans le menu principal ou dans les options.
-- Sur CrazyGames, les boutons « Exporter / Importer la sauvegarde » sont masqués (inutiles : la sauvegarde suit le compte).
-- Une publicité peut s'afficher au lancement d'une nouvelle partie ou d'une mission, au plus une toutes les 4 minutes
-  (uniquement après le Full Launch). Jamais pendant la partie.

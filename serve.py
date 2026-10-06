@@ -16,7 +16,7 @@ class NoCache(http.server.SimpleHTTPRequestHandler):
     # Outil de développement : enregistre une image envoyée par la page (couvertures de la fiche du jeu).
     # POST /capture/nom.png  ->  fiche/nom.png
     def do_POST(self):
-        m = re.fullmatch(r'/capture/([a-z0-9-]+\.(png|jpg))', self.path)
+        m = re.fullmatch(r'/capture/([a-z0-9-]+\.(png|jpg|mp4))', self.path)
         if not m:
             self.send_error(404)
             return

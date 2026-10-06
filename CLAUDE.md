@@ -21,7 +21,7 @@ Jeu de développement de village/cité dans le navigateur. Projet indépendant d
   `L('français', 'english')` (`js/i18n.js`) ; les données (bâtiments, objectifs, missions…) ont leur version
   anglaise dans `js/lang-en.js`. Tester les deux langues (choix dans le menu principal ou les options).
 - Portails de jeux (`js/platform.js`) : sur CrazyGames, sauvegardes via le SDK (`store`, jamais `localStorage`
-  directement), phases de jeu signalées, publicité seulement entre deux parties. Test local :
+  directement), phases de jeu signalées, publicités uniquement « rewarded » proposées au joueur (bouton cadeau), jamais imposées (choix de l'utilisateur). Test local :
   http://localhost:8000/?platform=crazygames. Fiche, couvertures et guide de publication : dossier `fiche/`.
 
 ## Automatisation

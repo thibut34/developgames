@@ -451,7 +451,6 @@ function loadFrom(key) {
 // Prépare une mission : carte, ville de départ construite par le joueur automatique, réglages.
 async function startScenario(id) {
   const sc = findScenario(id);
-  await adBreak();
   let ng = createGame(sc.seed, { difficulty: sc.difficulty });
   if (sc.prebuild) {
     title.progress(L(`Préparation de la mission « ${sc.name} »…`, `Preparing the mission “${sc.name}”…`));
@@ -488,7 +487,7 @@ async function startScenario(id) {
 const title = createTitle({
   hasSave: () => hasAutosave,
   onContinue: () => { const ng = load(); if (ng) startGame(ng); else showTitle('new'); },
-  onNew: async (difficulty, seed) => { await adBreak(); startGame(createGame(seed, { difficulty })); },
+  onNew: (difficulty, seed) => startGame(createGame(seed, { difficulty })),
   onScenario: (id) => startScenario(id),
   slots: slotList,
   onLoad: loadFrom,
@@ -501,12 +500,51 @@ function showTitle(page) {
   title.show(page);
 }
 
-// Publicité éventuelle (portail de jeux) avant une nouvelle partie : le son est coupé pendant l'annonce.
-function adBreak() {
-  return new Promise((resolve) => platform.breakAd(
-    () => audio.setEnabled(false),
-    () => { audio.setEnabled(settings.sound); resolve(); },
-  ));
+// ---------- Bonus contre une publicité (portail de jeux) ----------
+// Toujours proposé, jamais imposé : le joueur choisit de regarder une publicité pour recevoir de l'or.
+let adPlaying = false;
+const rewardGold = () => Math.max(250, Math.round(((g.lastFin?.taxes || 0) * 8) / 50) * 50);
+
+function offerReward() {
+  if (!platform.canReward) {
+    view.showModal(`<div class="m-ic">${icon('gift')}</div><h2>${L('Bonus', 'Bonus')}</h2>
+      <p class="center">${L(`Prochain bonus disponible dans ${platform.rewardWait} min.`, `Next bonus available in ${platform.rewardWait} min.`)}</p>`,
+    [{ label: 'OK', cls: 'primary' }]);
+    return;
+  }
+  const n = rewardGold();
+  view.showModal(`<div class="m-ic">${icon('gift')}</div><h2>${L('Bonus', 'Bonus')}</h2>
+    <p class="center">${L(`Regardez une courte publicité et recevez <b>${n} or</b> pour votre cité.`, `Watch a short ad and receive <b>${n} gold</b> for your city.`)}</p>`, [
+    { label: L('Non merci', 'No thanks') },
+    { label: L('Regarder la publicité', 'Watch the ad'), cls: 'primary', onClick: () => watchReward(n) },
+  ]);
+}
+
+function watchReward(n) {
+  adPlaying = true;
+  platform.gameplay(false);
+  platform.rewardAd(() => audio.setEnabled(false), (ok) => {
+    adPlaying = false;
+    audio.setEnabled(settings.sound);
+    if (!title.open) platform.gameplay(true);
+    if (ok) {
+      g.gold += n;
+      view.toast(L(`Bonus reçu : +${n} or.`, `Bonus received: +${n} gold.`), 'good');
+      sound('coin');
+    } else view.toast(L('Aucune publicité disponible pour le moment. Réessayez plus tard.', 'No ad available right now. Please try again later.'), 'warn');
+    afterChange();
+  });
+}
+
+const rewardBtn = document.getElementById('btn-reward');
+if (platform.name === 'crazygames') {
+  rewardBtn.hidden = false;
+  rewardBtn.innerHTML = icon('gift');
+  rewardBtn.title = L('Bonus : or contre une publicité', 'Bonus: gold for watching an ad');
+  rewardBtn.onclick = () => { sound('click'); offerReward(); };
+  const glow = () => rewardBtn.classList.toggle('ready', platform.canReward);
+  glow();
+  setInterval(glow, 5000);
 }
 
 // ---------- Boucle ----------
@@ -534,7 +572,7 @@ let last = performance.now(), acc = 0;
 function frame(now) {
   const dt = Math.min(now - last, 100) / 1000;
   last = now;
-  const speed = modalPaused || title.open ? 0 : ui.speed;
+  const speed = modalPaused || adPlaying || title.open ? 0 : ui.speed;
   if (title.open) { cam.x += dt * 12; if (cam.x > 4000) cam.x = 300; }
   acc += dt * 1000 * speed;
   let ticked = false;
@@ -562,7 +600,7 @@ window.DG = {
   give(k, n) { if (k === 'gold') g.gold += n; else g.goods[k] += n; afterChange(); },
   days(n) { for (let i = 0; i < n; i++) step(g); afterChange(); },
   load(text) { startGame(deserialize(text)); },
-  draw() { renderer.draw(g, cam, { ...ui, speed: 0 }, 0); },
+  draw(dt = 0) { renderer.draw(g, cam, { ...ui, speed: dt ? 1 : 0 }, dt); },
 };
 void costText; void TOOLS;
 
@@ -570,7 +608,8 @@ view.renderCats();
 view.renderItems();
 centerOnTownhall();
 afterChange();
-showTitle();
+// Sur un portail, un nouveau joueur entre directement dans le jeu (avec l'aide), sans passer par le menu.
+if (platform.name !== 'web' && !hasAutosave) { startGame(g); showHelp(); } else showTitle();
 platform.loaded();
 requestAnimationFrame(frame);
 
