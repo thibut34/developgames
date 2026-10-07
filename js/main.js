@@ -16,6 +16,7 @@ import { computeMods } from './game.js';
 import { findScenario, DIFFICULTIES } from './scenarios.js';
 import { createTitle, markMission } from './title.js';
 import { createBot } from './autobuild.js';
+import { warmThumbs } from './thumbs.js';
 import { ISLAND_KINDS } from './world.js';
 import { L, setLang, locale } from './i18n.js';
 import { platform } from './platform.js';
@@ -635,6 +636,7 @@ void costText; void TOOLS;
 
 view.renderCats();
 view.renderItems();
+warmThumbs();
 centerOnTownhall();
 afterChange();
 // Sur un portail, on entre directement dans le jeu, sans passer par le menu : un nouveau joueur avec l'aide,

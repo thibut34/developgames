@@ -8,6 +8,8 @@ const SIZE = 100;     // pixels du canvas (affiché en plus petit)
 const SCALE = [0, 1.45, 0.92, 0.62];
 
 export function thumb(type, level = 1, era = 0) {
+  // Seul l'hôtel de ville change d'aspect selon l'ère : inutile de redessiner les autres à chaque ère.
+  if (type !== 'townhall') era = 0;
   const key = `${type}-${level}-${era}`;
   if (cache.has(key)) return cache.get(key);
   const d = BUILDINGS[type];
@@ -21,4 +23,15 @@ export function thumb(type, level = 1, era = 0) {
   const url = c.toDataURL();
   cache.set(key, url);
   return url;
+}
+
+// Prépare les miniatures en tâche de fond, quelques-unes à la fois, pour que la barre de construction
+// s'ouvre instantanément (les dessiner toutes au premier clic provoquait un gel sur les ordinateurs modestes).
+export function warmThumbs() {
+  const todo = Object.entries(BUILDINGS).filter(([, d]) => d.buildable !== false && d.cat).map(([id]) => id);
+  const next = () => {
+    for (let i = 0; i < 3 && todo.length; i++) thumb(todo.shift());
+    if (todo.length) setTimeout(next, 30);
+  };
+  setTimeout(next, 500);
 }
