@@ -217,7 +217,7 @@ export function createBot(seed, opts = {}) {
     m.step(g);
   }
 
-  const summary = () => `j${g.day} · ${['Hameau', 'Village', 'Bourg', 'Ville', 'Cité'][g.era]} · `
+  const summary = () => `j${g.day} · ${['Hameau', 'Village', 'Bourg', 'Ville', 'Cité', 'Capitale'][g.era]} · `
     + `classes ${g.cls.map(Math.floor).join('/')} · satisf. ${Math.round(g.happiness ?? 0)} % · or ${Math.floor(g.gold)} (${g.lastFin ? (g.lastFin.taxes - g.lastFin.upkeep).toFixed(1) : 0}/j) · `
     + `bois ${Math.floor(g.goods.wood)} planches ${Math.floor(g.goods.planks)} pierre ${Math.floor(g.goods.stone)} outils ${Math.floor(g.goods.tools)} · `
     + `pain ${Math.floor(g.goods.bread)} tissu ${Math.floor(g.goods.cloth)} · ${g.buildings.length} bât · obj ${g.quest} · feux ${g.stats.fires}`;

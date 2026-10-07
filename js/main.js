@@ -2,7 +2,7 @@ import { DAY_MS, BUILDINGS, TOOLS, ERAS, GOODS, CLASSES } from './config.js';
 import {
   createGame, load, save, clearSave, step, place, placeRoadPath, roadPathCost, applyArea, buildingAt,
   upgradeHouse, togglePause, toggleLock, bucketBrigade, advanceEra, buy, sell, acceptOffer, eraLocked, research, lockReason,
-  serialize, deserialize, def, costText, demolishBuilding, rebuild, population, resName,
+  serialize, deserialize, def, costText, demolishBuilding, rebuild, population, resName, renownTier,
 } from './game.js';
 import { P } from './iso.js';
 import { createRenderer } from './render.js';
@@ -17,7 +17,7 @@ import { findScenario, DIFFICULTIES } from './scenarios.js';
 import { createTitle, markMission } from './title.js';
 import { createBot } from './autobuild.js';
 import { ISLAND_KINDS } from './world.js';
-import { L, setLang } from './i18n.js';
+import { L, setLang, locale } from './i18n.js';
 import { platform } from './platform.js';
 
 // Sur un portail de jeux, le SDK doit être prêt avant de lire les sauvegardes.
@@ -70,6 +70,12 @@ function selectTool(id) {
     sound('error');
     return;
   }
+  const t = TOOLS.find((x) => x.id === id);
+  if (t && (t.era || 0) > g.era) {
+    view.toast(L(`${t.name} : débloqué à l'ère ${ERAS[t.era].name}.`, `${t.name}: unlocked in the ${ERAS[t.era].name} era.`), 'error');
+    sound('error');
+    return;
+  }
   ui.tool = ui.tool === id ? 'inspect' : id;
   ui.preview = null;
   if (ui.tool !== 'inspect') { ui.selected = null; view.closePanel(); }
@@ -119,7 +125,7 @@ function onTap(tile) {
   } else if (tool === 'road') {
     const r = placeRoadPath(g, [[x, y]]);
     if (r.built) sound('road'); else fail(r.error);
-  } else if (tool === 'clear' || tool === 'demolish') {
+  } else if (tool === 'clear' || tool === 'demolish' || tool === 'fill') {
     const r = applyArea(g, tool, x, y, x, y);
     if (r.count) { sound(tool === 'demolish' ? 'demolish' : 'road'); fx.dust(...P(x + 0.5, y + 0.5)); } else fail(r.error);
   } else if (BUILDINGS[tool]) {
@@ -241,7 +247,7 @@ attachInput(canvas, cam, {
   onHover: (tile, type) => { ui.hover = tile; if (type) ui.pointerType = type; },
   onTap,
   onCancel: cancelTool,
-  gesture: () => (ui.tool === 'road' ? 'road' : ui.tool === 'demolish' || ui.tool === 'clear' ? 'area' : null),
+  gesture: () => (ui.tool === 'road' ? 'road' : ['demolish', 'clear', 'fill'].includes(ui.tool) ? 'area' : null),
   onGesture,
 });
 canvas.addEventListener('pointermove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.inside = true; });
@@ -348,12 +354,29 @@ function drainEvents() {
       platform.happy();
       view.showModal(`<div class="m-ic">${icon('castle')}</div><h2>${L('Victoire', 'Victory')}</h2>
         <p class="center">${L('La Grande Cathédrale domine votre cité. Votre nom restera dans l\'histoire.', 'The Great Cathedral towers over your city. Your name will go down in history.')}</p>
+        <p class="center muted">${L('La partie continue : de grands monuments, l\'ère de la Capitale et la renommée de votre cité vous attendent.', 'The game goes on: great monuments, the Capital era and your city\'s renown await.')}</p>
         <ul class="parts"><li><span>${L('Habitants', 'Residents')}</span><b>${Math.floor(population(g))}</b></li>
         <li><span>${L('Jours écoulés', 'Days elapsed')}</span><b>${g.day}</b></li>
         <li><span>${L('Bâtiments construits', 'Buildings built')}</span><b>${g.stats.built}</b></li>
         <li><span>${L('Incendies', 'Fires')}</span><b>${g.stats.fires}</b></li></ul>`, [
         { label: L('Continuer à jouer', 'Keep playing'), cls: 'primary' },
       ]);
+    } else if (p.type === 'monument') {
+      sound('victory');
+      platform.happy();
+      const d = BUILDINGS[p.building];
+      view.showModal(`<div class="m-ic">${icon('landmark')}</div><h2>${d.name}</h2>
+        <p class="center">${L('Le chantier est terminé : ce grand monument fait la fierté de votre cité.', 'The building site is complete: this great monument is the pride of your city.')}</p>
+        <p class="center muted">${d.desc}</p>`, [{ label: L('Continuer', 'Continue'), cls: 'primary' }]);
+    } else if (p.type === 'renown') {
+      sound('era');
+      platform.happy();
+      const r = { next: renownTier(p.level + 1) };
+      const pop = renownTier(p.level).pop.toLocaleString(locale);
+      view.showModal(`<div class="m-ic">${icon('medal')}</div><h2>${renownTier(p.level).title}</h2>
+        <p class="center">${L(`Votre ville compte plus de ${pop} habitants : sa renommée grandit dans tout le royaume.`, `Your town has more than ${pop} residents: its renown spreads across the kingdom.`)}</p>
+        <p class="center muted">${L(`Prochain titre : ${r.next.title}, à ${r.next.pop.toLocaleString(locale)} habitants.`, `Next title: ${r.next.title}, at ${r.next.pop.toLocaleString(locale)} residents.`)}</p>`,
+      [{ label: L('Continuer', 'Continue'), cls: 'primary' }]);
     }
   }
 }
@@ -378,6 +401,9 @@ const HELP_FR = [
   ['flame', 'Saisons et incendies', `${step_('snowflake', 'Presque rien ne pousse en hiver : faites des réserves de nourriture à l\'automne.')}
     ${step_('flame', 'Le feu peut prendre et se propager aux voisins. Un <b>poste d\'incendie</b> empêche les départs de feu dans sa zone et éteint vite les incendies ; un puits permet une chaîne de seaux.')}
     ${step_('layers', 'Les <b>calques</b> (bouton à droite) montrent l\'eau, les marchés, la protection incendie, la beauté et la satisfaction.')}`],
+  ['landmark', 'Après la Cathédrale', `${step_('landmark', 'La partie continue : bâtissez les <b>grands monuments</b> (Jardins royaux, Grand phare, Arènes), puis passez à l\'ère de la <b>Capitale</b> pour le Palais royal.')}
+    ${step_('medal', 'La <b>renommée</b> donne un titre à votre cité à chaque palier d\'habitants, sans fin.')}
+    ${step_('shovel', 'Manque de place ? L\'outil <b>Remblayer</b> gagne du terrain sur la mer, à partir de l\'ère de la Ville.')}`],
 ];
 const HELP_EN = [
   ['house', 'Welcome', `<p class="center">Found a hamlet on your island and turn it into a great city, all the way to the <b>Great Cathedral</b>.</p>
@@ -397,6 +423,9 @@ const HELP_EN = [
   ['flame', 'Seasons and fires', `${step_('snowflake', 'Almost nothing grows in winter: stock up on food in autumn.')}
     ${step_('flame', 'Fire can break out and spread to neighbours. A <b>fire station</b> prevents fires in its area and puts them out quickly; a well allows a bucket brigade.')}
     ${step_('layers', 'The <b>view layers</b> (button on the right) show water, markets, fire protection, beauty and satisfaction.')}`],
+  ['landmark', 'After the Cathedral', `${step_('landmark', 'The game goes on: build the <b>great monuments</b> (Royal Gardens, Great Lighthouse, Arena), then advance to the <b>Capital</b> era for the Royal Palace.')}
+    ${step_('medal', '<b>Renown</b> gives your city a new title at every population tier, endlessly.')}
+    ${step_('shovel', 'Running out of space? The <b>Reclaim land</b> tool wins land from the sea, from the Town era onwards.')}`],
 ];
 const HELP = L(HELP_FR, HELP_EN);
 function showHelp(i = 0) {

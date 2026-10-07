@@ -2,6 +2,7 @@
 import {
   MAP, T, TERRAIN, CLEAR, GOODS, GOOD_KEYS, START, BASE_STORAGE, STORAGE_PER_ERA, WORKFORCE, ROAD_COST,
   CLASSES, TAXES, ERAS, BUILDINGS, WORK_PRIORITY, QUESTS, DAYS_PER_SEASON, SEASONS, FIRE, TECHS,
+  RENOWN, RENOWN_STEP, FILL_COST, TOOLS,
 } from './config.js';
 import { generateMap, computeIslands } from './world.js';
 import { DIFFICULTIES, findScenario } from './scenarios.js';
@@ -45,6 +46,8 @@ export function createGame(seed = Math.floor(Math.random() * 1e9), opts = {}) {
     alerts: {},
     tech: [],
     rp: 0,
+    filled: [],
+    renown: 0,
   };
   const c = MAP / 2 - 1;
   g.buildings.push({ id: g.nextId++, type: 'townhall', x: c, y: c, level: 1 });
@@ -304,8 +307,10 @@ export function lockReason(g, type) {
   const d = BUILDINGS[type];
   if ((d.era || 0) > g.era) return L(`Débloqué à l'ère : ${ERAS[d.era].name}`, `Unlocked in the era: ${ERAS[d.era].name}`);
   if (d.tech && !g.tech.includes(d.tech)) return `${L('Nécessite la technologie :', 'Requires the technology:')} ${TECHS.find((t) => t.id === d.tech).name}`;
+  if (d.after && !isDone(g, d.after)) return `${L('Achevez d\'abord :', 'First complete:')} ${BUILDINGS[d.after].name}`;
   return null;
 }
+const isDone = (g, type) => g.buildings.some((b) => b.type === type && !b.build);
 export const eraLocked = (g, type) => !!lockReason(g, type);
 
 export function canPlace(g, type, x, y) {
@@ -403,9 +408,37 @@ export function clearTile(g, x, y) {
   return { ok: true, gain: c.gain };
 }
 
+// Remblai : une case d'eau qui touche la côte devient constructible, sans jamais relier deux îles.
+export function canFill(g, x, y) {
+  const tool = TOOLS.find((t) => t.id === 'fill');
+  if (g.era < tool.era) return { ok: false, reason: L(`Débloqué à l'ère : ${ERAS[tool.era].name}`, `Unlocked in the era: ${ERAS[tool.era].name}`) };
+  if (x < 2 || y < 2 || x > MAP - 3 || y > MAP - 3 || g.tiles[idx(x, y)] !== T.WATER) return { ok: false, silent: true };
+  if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => g.tiles[idx(x + dx, y + dy)] !== T.WATER)) {
+    return { ok: false, reason: L('Il faut remblayer depuis la côte', 'Reclaim land starting from the coast') };
+  }
+  const near = new Set();
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) if (g.tiles[idx(x + dx, y + dy)] !== T.WATER) near.add(g.isl.id[idx(x + dx, y + dy)]);
+  }
+  if (near.size > 1) return { ok: false, reason: L('Trop près d\'une autre île', 'Too close to another island') };
+  if (!canAfford(g, FILL_COST)) return { ok: false, reason: L(`Il faut ${costText(FILL_COST)}`, `Requires ${costText(FILL_COST)}`) };
+  return { ok: true, island: [...near][0] };
+}
+
+function fillTile(g, x, y) {
+  const c = canFill(g, x, y);
+  if (!c.ok) return c;
+  pay(g, FILL_COST);
+  g.tiles[idx(x, y)] = T.GRASS;
+  g.isl.id[idx(x, y)] = c.island;
+  g.filled.push(idx(x, y));
+  g.terrainVersion++;
+  return { ok: true };
+}
+
 export function demolishBuilding(g, b) {
   if (b.type === 'townhall') return { ok: false, reason: L('L\'hôtel de ville ne peut pas être démoli', 'The town hall cannot be demolished') };
-  if (b.type === 'wonder' && !b.build) return { ok: false, reason: L('On ne démolit pas une merveille !', 'You cannot demolish a wonder!') };
+  if ((b.type === 'wonder' || def(b).monument) && !b.build) return { ok: false, reason: L('On ne démolit pas une merveille !', 'You cannot demolish a wonder!') };
   const refund = {};
   for (const [k, v] of Object.entries(def(b).cost || {})) refund[k] = Math.floor(v / 2);
   gain(g, refund);
@@ -420,8 +453,8 @@ export function applyArea(g, tool, x0, y0, x1, y1) {
   for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
       if (!inMap(x, y)) continue;
-      if (tool === 'clear') {
-        const r = clearTile(g, x, y);
+      if (tool === 'clear' || tool === 'fill') {
+        const r = tool === 'clear' ? clearTile(g, x, y) : fillTile(g, x, y);
         if (r.ok) count++; else if (!r.silent && !error) error = r.reason;
         continue;
       }
@@ -473,6 +506,15 @@ export function computeMods(g) {
     if (e.storage) m.storage += e.storage;
     if (e.sat) m.sat += e.sat;
   }
+  // Grands monuments achevés : bonus pour toute la cité.
+  m.trade = 1;
+  for (const b of g.buildings) {
+    const e = !b.build && def(b).effect;
+    if (!e) continue;
+    if (e.sat) m.sat += e.sat;
+    if (e.tax) m.tax *= e.tax;
+    if (e.trade) m.trade *= e.trade;
+  }
   g.mods = m;
 }
 
@@ -510,6 +552,7 @@ export function eraStatus(g) {
     { text: `${n} ${CLASSES[c].name.toLowerCase()}`, ok: g.cls[c] >= n, cur: Math.floor(g.cls[c]), max: n },
     { text: L(`Payer ${costText(next.cost)}`, `Pay ${costText(next.cost)}`), ok: canAfford(g, next.cost) },
   ];
+  if (next.after) reqs.unshift({ text: `${L('Achever :', 'Complete:')} ${BUILDINGS[next.after].name}`, ok: isDone(g, next.after) });
   return { next, reqs, ok: reqs.every((r) => r.ok) };
 }
 
@@ -528,8 +571,8 @@ export function advanceEra(g) {
 // ---------- Commerce ----------
 
 const hasTrading = (g) => g.buildings.some((b) => b.type === 'trading' && isWorking(b));
-export const buyPrice = (g, k) => GOODS[k].price * g.prices[k] * (hasTrading(g) ? 1 : 1.5);
-export const sellPrice = (g, k) => GOODS[k].price * g.prices[k] * (hasTrading(g) ? 0.8 : 0.5);
+export const buyPrice = (g, k) => (GOODS[k].price * g.prices[k] * (hasTrading(g) ? 1 : 1.5)) / g.mods.trade;
+export const sellPrice = (g, k) => GOODS[k].price * g.prices[k] * (hasTrading(g) ? 0.8 : 0.5) * g.mods.trade;
 export const tradeHasPost = hasTrading;
 
 export function buy(g, k, n) {
@@ -600,8 +643,34 @@ function checkScenario(g) {
   }
 }
 
+// Palier de renommée n (1, 2, 3…) : population à atteindre, titre et récompense.
+export function renownTier(n) {
+  if (n <= RENOWN.length) return RENOWN[n - 1];
+  const last = RENOWN[RENOWN.length - 1];
+  const k = n - RENOWN.length;
+  return { pop: last.pop + k * RENOWN_STEP, title: `${last.title} ${toRoman(k + 1)}`, reward: { gold: last.reward.gold + k * 5000 } };
+}
+const toRoman = (n) => [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']].reduce((s, [v, r]) => { while (n >= v) { s += r; n -= v; } return s; }, '');
+
+export function renownStatus(g) {
+  const cur = g.renown ? renownTier(g.renown) : null;
+  return { level: g.renown || 0, title: cur?.title || null, next: renownTier((g.renown || 0) + 1), pop: Math.floor(population(g)) };
+}
+
+function checkRenown(g) {
+  for (;;) {
+    const next = renownTier((g.renown || 0) + 1);
+    if (population(g) < next.pop) return;
+    g.renown = (g.renown || 0) + 1;
+    gain(g, next.reward);
+    notify(g, L(`Renommée : votre ville devient « ${next.title} ». Récompense : ${costText(next.reward)}.`, `Renown: your city becomes “${next.title}”. Reward: ${costText(next.reward)}.`), 'good', 'quest');
+    g.pending.push({ type: 'renown', level: g.renown });
+  }
+}
+
 export function checkQuests(g) {
   if (g.scenario) { checkScenario(g); return; }
+  checkRenown(g);
   for (;;) {
     const p = questProgress(g);
     if (!p || p.cur < p.max) return;
@@ -901,6 +970,8 @@ export function step(g) {
     b.build--;
     if (b.build === 0) {
       notify(g, L(`Chantier terminé : ${def(b).name}.`, `Construction complete: ${def(b).name}.`), 'good', 'quest', b);
+      if (def(b).effect) computeMods(g);
+      if (def(b).monument) g.pending.push({ type: 'monument', building: b.type });
       if (b.type === 'wonder') {
         g.won = true;
         g.pending.push({ type: 'victory' });
@@ -937,6 +1008,7 @@ export function serialize(g) {
     goods: g.goods, gold: g.gold, day: g.day, era: g.era, tax: g.tax, quest: g.quest,
     log: g.log.slice(0, 50), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats, alerts: g.alerts,
     tech: g.tech, rp: g.rp, difficulty: g.difficulty, scenario: g.scenario, scenarioStart: g.scenarioStart, scenarioEnded: g.scenarioEnded,
+    filled: g.filled, renown: g.renown,
   });
 }
 
@@ -945,6 +1017,9 @@ export function deserialize(text) {
   if (!d || d.v !== 4) return null;
   const g = { ...d, tiles: generateMap(d.seed), roads: new Uint8Array(MAP * MAP) };
   for (const i of d.cleared) g.tiles[i] = T.GRASS;
+  g.filled ??= [];
+  for (const i of g.filled) g.tiles[i] = T.GRASS;
+  g.renown ??= 0;
   for (const i of d.roads) g.roads[i] = 1;
   for (const k of GOOD_KEYS) g.goods[k] ??= 0;
   g.alerts ??= {};

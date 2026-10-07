@@ -69,6 +69,7 @@ export const BASE_STORAGE = 100;      // par marchandise
 export const STORAGE_PER_ERA = 50;
 export const WORKFORCE = 0.5;         // part des habitants qui travaillent
 export const ROAD_COST = { wood: 1 };
+export const FILL_COST = { stone: 20, gold: 80 };   // remblayer une case d'eau au bord de la côte
 
 // ---------- Classes d'habitants ----------
 // Une maison de niveau N abrite la classe N. needs : ce qu'il faut pour être satisfaits.
@@ -147,6 +148,8 @@ export const ERAS = [
   { name: 'Bourg', need: [1, 80], cost: { planks: 80, stone: 60, gold: 1200 } },
   { name: 'Ville', need: [2, 80], cost: { stone: 150, tools: 40, gold: 3000 } },
   { name: 'Cité', need: [3, 60], cost: { stone: 250, tools: 80, gold: 6000 } },
+  // Après la Grande Cathédrale : une très grande cité, pour qui veut continuer à bâtir.
+  { name: 'Capitale', need: [3, 250], cost: { stone: 400, tools: 150, jewels: 60, gold: 15000 }, after: 'wonder' },
 ];
 
 export const CATEGORIES = [
@@ -163,6 +166,7 @@ export const TOOLS = [
   { id: 'road', name: 'Route', icon: 'route', desc: 'Glissez pour tracer une route. Tout bâtiment doit être relié à l\'hôtel de ville.', cost: ROAD_COST },
   { id: 'clear', name: 'Défricher', icon: 'axe', desc: 'Glissez sur une zone pour retirer forêts (5 or) et rochers (15 or).' },
   { id: 'demolish', name: 'Démolir', icon: 'trash-2', desc: 'Glissez sur une zone pour détruire routes et bâtiments (50 % remboursé).' },
+  { id: 'fill', name: 'Remblayer', icon: 'shovel', era: 3, cost: FILL_COST, desc: 'Glissez le long de la côte pour gagner du terrain sur la mer. Impossible de relier deux îles.' },
 ];
 
 // ---------- Bâtiments ----------
@@ -341,6 +345,32 @@ export const BUILDINGS = {
     service: { type: 'chapel', r: 14 }, decor: { v: 5, r: 7 },
     desc: 'La merveille de votre cité : 120 jours de chantier qui consomment chaque jour 4 pierre, 2 planches et 1 outil (le chantier s\'arrête s\'ils manquent). L\'achever, c\'est gagner la partie.', look: 'wonder',
   },
+  // --- Grands monuments (après la Grande Cathédrale) ---
+  // after : bâtiment à achever d'abord. effect : bonus pour toute la cité une fois le chantier fini.
+  royalgarden: {
+    name: 'Jardins royaux', cat: 'deco', era: 4, after: 'wonder', size: 3, unique: true, monument: true, buildDays: 60, fire: 0,
+    cost: { wood: 100, stone: 150, gold: 5000 }, buildUse: { stone: 2, planks: 1 },
+    decor: { v: 6, r: 9 }, effect: { sat: 0.03 },
+    desc: 'Grand monument : 60 jours de chantier (2 pierre et 1 planche par jour). Beauté +6 sur 9 cases et satisfaction de toute la cité +3 %.', look: 'royalgarden',
+  },
+  arena: {
+    name: 'Arènes', cat: 'service', era: 4, after: 'wonder', size: 3, unique: true, monument: true, buildDays: 90, fire: 0,
+    cost: { stone: 300, tools: 40, gold: 8000 }, buildUse: { stone: 4, tools: 1 },
+    service: { type: 'tavern', r: 16 }, effect: { sat: 0.05 },
+    desc: 'Grand monument : 90 jours de chantier (4 pierre et 1 outil par jour). Divertit les maisons à 16 cases et satisfaction de toute la cité +5 %.', look: 'arena',
+  },
+  lighthouse: {
+    name: 'Grand phare', cat: 'service', era: 4, after: 'wonder', size: 2, unique: true, monument: true, buildDays: 75, fire: 0,
+    cost: { stone: 200, tools: 30, gold: 6000 }, buildUse: { stone: 3, planks: 1 }, near: T.WATER,
+    effect: { trade: 1.2 },
+    desc: 'Grand monument au bord de l\'eau : 75 jours de chantier (3 pierre et 1 planche par jour). Les marchands affluent : achats 20 % moins chers, ventes 20 % plus chères.', look: 'lighthouse',
+  },
+  palace: {
+    name: 'Palais royal', cat: 'service', era: 5, size: 3, unique: true, monument: true, buildDays: 150, fire: 0,
+    cost: { stone: 500, tools: 100, jewels: 40, gold: 20000 }, buildUse: { stone: 5, tools: 2, cloth: 1 },
+    decor: { v: 5, r: 8 }, effect: { tax: 1.25 },
+    desc: 'Le plus grand des monuments : 150 jours de chantier (5 pierre, 2 outils et 1 tissu par jour). Impôts de toute la cité +25 % et beauté +5 sur 8 cases.', look: 'palace',
+  },
   library: {
     name: 'Bibliothèque', cat: 'service', era: 0, size: 1, cost: { wood: 20, planks: 10, gold: 80 }, workers: [0, 2],
     produces: { research: 1 }, upkeep: 0.6,
@@ -464,7 +494,27 @@ export const QUESTS = [
   { text: 'Atteindre 40 nobles', check: (g, h) => [h.cls(3), 40], reward: { gold: 1500 } },
   { text: 'Passer à l\'ère de la Cité', check: (g) => [g.era, 4], reward: { gold: 2000 } },
   { text: 'Achever la Grande Cathédrale', check: (g, h) => [h.done('wonder'), 1], reward: { gold: 5000 } },
+  { text: 'Achever les Jardins royaux', check: (g, h) => [h.done('royalgarden'), 1], reward: { gold: 3000 } },
+  { text: 'Atteindre 2 000 habitants', check: (g, h) => [h.pop(), 2000], reward: { gold: 4000 } },
+  { text: 'Achever le Grand phare', check: (g, h) => [h.done('lighthouse'), 1], reward: { gold: 4000 } },
+  { text: 'Achever les Arènes', check: (g, h) => [h.done('arena'), 1], reward: { gold: 5000 } },
+  { text: 'Atteindre 150 nobles', check: (g, h) => [h.cls(3), 150], reward: { jewels: 30 } },
+  { text: 'Passer à l\'ère de la Capitale', check: (g) => [g.era, 5], reward: { gold: 10000 } },
+  { text: 'Achever le Palais royal', check: (g, h) => [h.done('palace'), 1], reward: { gold: 15000 } },
 ];
+
+// ---------- Renommée ----------
+// Paliers de population sans fin : chacun donne un titre à la cité et une récompense.
+// Au-delà de la liste, un nouveau palier tous les RENOWN_STEP habitants.
+export const RENOWN = [
+  { pop: 1500, title: 'Cité prospère', reward: { gold: 3000 } },
+  { pop: 2500, title: 'Grande cité', reward: { gold: 5000 } },
+  { pop: 4000, title: 'Cité royale', reward: { gold: 8000 } },
+  { pop: 6000, title: 'Joyau du royaume', reward: { gold: 12000 } },
+  { pop: 8500, title: 'Capitale du royaume', reward: { gold: 16000 } },
+  { pop: 11500, title: 'Métropole légendaire', reward: { gold: 20000 } },
+];
+export const RENOWN_STEP = 4000;
 
 // ---------- Version anglaise : les textes de lang-en.js remplacent les textes français ----------
 if (EN) {
@@ -483,4 +533,5 @@ if (EN) {
   for (const [id, b] of Object.entries(BUILDINGS)) Object.assign(b, en.buildings[id]);
   for (const t of TECHS) [t.name, t.desc] = en.techs[t.id];
   QUESTS.forEach((q, i) => { q.text = en.quests[i]; });
+  RENOWN.forEach((r, i) => { r.title = en.renown[i]; });
 }

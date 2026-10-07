@@ -6,7 +6,7 @@ import { tree, mountain } from './sprites.js';
 import { iconImage } from './icons.js';
 import * as fx from './fx.js';
 import * as agents from './agents.js';
-import { canPlace, buildingAt, season, def, tileAt, roadAt, isHouse } from './game.js';
+import { canPlace, canFill, buildingAt, season, def, tileAt, roadAt, isHouse } from './game.js';
 
 const hash = (x, y, k = 0) => {
   const n = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453;
@@ -335,11 +335,11 @@ export function createRenderer(canvas) {
       }
     } else if (pv?.kind === 'area') {
       const x0 = Math.min(pv.x0, pv.x1), x1 = Math.max(pv.x0, pv.x1), y0 = Math.min(pv.y0, pv.y1), y1 = Math.max(pv.y0, pv.y1);
-      const color = pv.tool === 'clear' ? 'rgba(255,170,60,' : 'rgba(230,60,60,';
+      const color = pv.tool === 'clear' ? 'rgba(255,170,60,' : pv.tool === 'fill' ? 'rgba(90,200,255,' : 'rgba(230,60,60,';
       poly(ctx, [P(x0, y0), P(x1 + 1, y0), P(x1 + 1, y1 + 1), P(x0, y1 + 1)], `${color}0.18)`, `${color}0.9)`);
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
-          const hit = pv.tool === 'clear' ? CLEAR[tileAt(g, x, y)] : buildingAt(g, x, y) || roadAt(g, x, y);
+          const hit = pv.tool === 'clear' ? CLEAR[tileAt(g, x, y)] : pv.tool === 'fill' ? canFill(g, x, y).ok : buildingAt(g, x, y) || roadAt(g, x, y);
           if (hit) poly(ctx, footprint(x, y, 1), `${color}0.35)`);
         }
       }
@@ -427,6 +427,9 @@ export function createRenderer(canvas) {
       } else if (tool === 'clear') {
         const ok = CLEAR[tileAt(g, x, y)];
         poly(ctx, footprint(x, y, 1), ok ? 'rgba(255,170,60,0.35)' : 'rgba(255,255,255,0.1)', ok ? '#ffaa3c' : 'rgba(255,255,255,0.35)');
+      } else if (tool === 'fill') {
+        const ok = canFill(g, x, y).ok;
+        poly(ctx, footprint(x, y, 1), ok ? 'rgba(90,200,255,0.35)' : 'rgba(255,255,255,0.1)', ok ? '#5ac8ff' : 'rgba(255,255,255,0.35)');
       } else if (tool === 'demolish') {
         const b = buildingAt(g, x, y);
         if (b) poly(ctx, footprint(b.x, b.y, def(b).size), 'rgba(230,60,60,0.32)', '#ff4d4d');

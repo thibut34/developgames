@@ -6,7 +6,7 @@ import {
 import {
   storage, canAfford, amount, eraLocked, def, isWorking, houseNeeds, upgradeStatus, eraStatus,
   questProgress, buyPrice, sellPrice, tradeHasPost, dateText, season, capOf, isHouse, population,
-  lockReason, techStatus, scenarioGoals,
+  lockReason, techStatus, scenarioGoals, renownStatus,
 } from './game.js';
 import { DIFFICULTIES } from './scenarios.js';
 import { icon } from './icons.js';
@@ -119,7 +119,14 @@ export function createUI(app) {
       return;
     }
     const p = questProgress(app.g);
-    if (!p) { box.innerHTML = `<div class="q-title">${icon('crown')}${L('Tous les objectifs sont remplis', 'All goals completed')}</div>`; return; }
+    if (!p) {
+      // Objectifs terminés : la renommée prend le relais, sans fin.
+      const r = renownStatus(app.g);
+      box.innerHTML = `<div class="q-title">${icon('medal')}<span>${r.title ? esc(r.title) : L('Renommée', 'Renown')}</span></div>
+        ${bar(r.pop / r.next.pop, 'thin')}
+        <div class="q-sub"><span>${L(`Prochain titre à ${fmt(r.next.pop)} habitants`, `Next title at ${fmt(r.next.pop)} residents`)}</span>${costHtml(null, r.next.reward)}</div>`;
+      return;
+    }
     box.innerHTML = `<div class="q-title">${icon('target')}<span>${esc(p.q.text)}</span></div>
       ${bar(p.cur / p.max, 'thin')}
       <div class="q-sub"><span>${fmt(p.cur)} / ${fmt(p.max)}</span>${costHtml(null, p.q.reward)}</div>`;
@@ -145,12 +152,13 @@ export function createUI(app) {
   function renderItems() {
     const g = app.g;
     $('#items').innerHTML = items().map((it) => {
-      const locked = !it.isTool && eraLocked(g, it.id);
+      const locked = it.isTool ? (it.era || 0) > g.era : eraLocked(g, it.id);
+      const lockLabel = (it.era || 0) > g.era ? ERAS[it.era].name : it.tech && !g.tech.includes(it.tech) ? L('Recherche', 'Research') : it.after ? BUILDINGS[it.after].name : '';
       const visual = it.isTool ? `<span class="item-ic">${icon(it.icon)}</span>` : `<img class="item-thumb" src="${thumb(it.id, 1, g.era)}" alt="">`;
       return `<button class="item ${app.ui.tool === it.id ? 'active' : ''} ${locked ? 'locked' : ''}" data-id="${it.id}">
         ${visual}
         <span class="item-name">${esc(it.name)}</span>
-        <span class="item-cost">${locked ? `${icon('lock')}${(it.era || 0) > g.era ? ERAS[it.era].name : L('Recherche', 'Research')}` : it.cost ? costHtml(g, it.cost) : ''}</span>
+        <span class="item-cost">${locked ? `${icon('lock')}${esc(lockLabel)}` : it.cost ? costHtml(g, it.cost) : ''}</span>
       </button>`;
     }).join('');
     for (const b of document.querySelectorAll('.item')) {
@@ -172,6 +180,8 @@ export function createUI(app) {
       if (d.upkeep) html += `<p class="row muted">${L(`Entretien ${fmt1(d.upkeep)} or / jour`, `Upkeep ${fmt1(d.upkeep)} gold / day`)}</p>`;
       const lock = lockReason(app.g, id);
       if (lock) html += `<p class="warn">${esc(lock)}</p>`;
+    } else if ((d.era || 0) > app.g.era) {
+      html += `<p class="warn">${L(`Débloqué à l'ère : ${ERAS[d.era].name}`, `Unlocked in the era: ${ERAS[d.era].name}`)}</p>`;
     }
     const r = el.getBoundingClientRect();
     showTip(html, r.left + r.width / 2, r.top - 8, 'above');
@@ -351,7 +361,14 @@ export function createUI(app) {
         else if (i < g.quest + 4) html += `<li class="next"><span class="dot"></span><span>${esc(q.text)}</span></li>`;
       });
       html += '</ul>';
-      if (g.quest + 4 < QUESTS.length) html += `<p class="muted small">${L(`Encore ${QUESTS.length - g.quest - 4} objectifs jusqu'à la Grande Cathédrale.`, `${QUESTS.length - g.quest - 4} more goals until the Great Cathedral.`)}</p>`;
+      if (g.quest + 4 < QUESTS.length) html += `<p class="muted small">${L(`Encore ${QUESTS.length - g.quest - 4} objectifs ensuite.`, `${QUESTS.length - g.quest - 4} more goals after that.`)}</p>`;
+      // Renommée : paliers de population sans fin
+      const r = renownStatus(g);
+      html += `<h3>${L('Renommée', 'Renown')}</h3>
+        <div class="kv"><span>${L('Titre de la cité', 'City title')}</span><b>${r.title ? esc(r.title) : L('Aucun pour l\'instant', 'None yet')}</b></div>
+        <div class="kv"><span>${L(`Prochain : ${esc(r.next.title)}`, `Next: ${esc(r.next.title)}`)}</span><b>${fmt(r.pop)} / ${fmt(r.next.pop)}</b></div>${bar(r.pop / r.next.pop, 'thin')}
+        <div class="q-sub"><span class="muted small">${L('Récompense', 'Reward')}</span>${costHtml(null, r.next.reward)}</div>
+        <p class="muted small">${L('Les paliers de renommée continuent sans fin : faites grandir votre cité aussi loin que vous le voulez.', 'Renown tiers never end: grow your city as far as you like.')}</p>`;
       return html;
     },
 
@@ -359,7 +376,7 @@ export function createUI(app) {
       let html = head(L('Ères', 'Eras'), 'crown', `${L('Ère actuelle :', 'Current era:')} ${ERAS[g.era].name}`);
       html += `<ol class="eras">${ERAS.map((e, i) => `<li class="${i < g.era ? 'done' : i === g.era ? 'current' : ''}">${e.name}</li>`).join('')}</ol>`;
       const s = eraStatus(g);
-      if (!s) return `${html}<p class="good">${L('Dernière ère atteinte : bâtissez la Grande Cathédrale.', 'Final era reached: build the Great Cathedral.')}</p>`;
+      if (!s) return `${html}<p class="good">${L('Dernière ère atteinte : achevez le Palais royal et faites grandir votre capitale.', 'Final era reached: complete the Royal Palace and keep growing your capital.')}</p>`;
       html += `<h3>${L('Prochaine ère :', 'Next era:')} ${s.next.name}</h3><ul class="checks">`;
       for (const r of s.reqs) html += `<li class="${r.ok ? 'ok' : 'no'}">${icon(r.ok ? 'check' : 'x')}<span>${esc(r.text)}${r.max ? ` <span class="muted">(${fmt(r.cur)} / ${fmt(r.max)})</span>` : ''}</span></li>`;
       html += '</ul>';

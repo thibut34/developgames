@@ -172,6 +172,7 @@ function chimney(ctx, x, y, base, color = '#7a6a60') {
 const FIELD = ['#7da64a', '#cdbb4c', '#dba33c', '#e8ecf1'];
 const TOWNHALL = [
   ['#b7895a', '#6e4b2c'], ['#cfc4b0', '#8a3b2b'], ['#e8dcc4', '#3e5f8a'], ['#f2ead8', '#2f5d7a'], ['#f6efe0', '#c9a23a'],
+  ['#fbf6ea', '#2c3e66'],
 ];
 
 // Échafaudages d'un chantier en cours (progress de 0 à 1).
@@ -200,7 +201,14 @@ export function drawScaffold(ctx, b, top, progress) {
 }
 
 // Dessine un bâtiment. Renvoie { top: y du point le plus haut, smoke: point de fumée ou null }.
-const FLAT = ['farm', 'sheep', 'vineyard', 'spicefarm', 'garden', 'park', 'market', 'ruins', 'well', 'fountain', 'statue', 'port', 'wonder'];
+const FLAT = ['farm', 'sheep', 'vineyard', 'spicefarm', 'garden', 'park', 'market', 'ruins', 'well', 'fountain', 'statue', 'port', 'wonder', 'royalgarden', 'arena', 'palace'];
+
+// Ellipse au sol (cercle en isométrique) centrée sur la case (i, j), de rayon r cases, surélevée de h.
+function isoEllipse(ctx, i, j, r, h = 0) {
+  const c = P(i, j);
+  ctx.beginPath();
+  ctx.ellipse(c[0], c[1] - h, r * 45.25, r * 22.63, 0, 0, Math.PI * 2);
+}
 
 export function drawBuilding(ctx, b, env) {
   const d = BUILDINGS[b.type];
@@ -705,6 +713,124 @@ export function drawBuilding(ctx, b, env) {
         ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0], p[1] - 12); ctx.stroke();
       }
       top -= 12;
+      break;
+    }
+    case 'royalgarden': {
+      // Parterres à la française : allées de gravier, haies taillées, bassin central et arbres aux coins
+      const winter = season === 3;
+      ground(ctx, x + 0.04, y + 0.04, x + s - 0.04, y + s - 0.04, winter ? '#e6ebf0' : '#6fae52', 'rgba(40,80,30,0.45)');
+      ground(ctx, x + 1.3, y + 0.04, x + 1.7, y + s - 0.04, '#e3d6b4');
+      ground(ctx, x + 0.04, y + 1.3, x + s - 0.04, y + 1.7, '#e3d6b4');
+      const beds = [[0.25, 0.25], [1.85, 0.25], [0.25, 1.85], [1.85, 1.85]];
+      const flowers = ['#e2575a', '#f4c542', '#d97ad6', '#ffffff'];
+      for (const [k, [i, j]] of beds.entries()) {
+        box(ctx, x + i, y + j, x + i + 0.9, y + j + 0.9, 4, '#3f7a2e', winter ? '#dfe7df' : '#4f8f38', 'flat');
+        if (!winter) ground(ctx, x + i + 0.2, y + j + 0.2, x + i + 0.7, y + j + 0.7, flowers[(k + b.x) % flowers.length]);
+      }
+      const c = P(x + 1.5, y + 1.5);
+      ctx.fillStyle = '#cfc9bd';
+      isoEllipse(ctx, x + 1.5, y + 1.5, 0.42); ctx.fill();
+      ctx.fillStyle = winter ? '#cfe3f2' : '#4f9bd0';
+      isoEllipse(ctx, x + 1.5, y + 1.5, 0.33); ctx.fill();
+      ctx.fillStyle = '#e9e2d2';
+      ctx.fillRect(c[0] - 2.5, c[1] - 20, 5, 20);
+      ctx.beginPath(); ctx.ellipse(c[0], c[1] - 20, 7, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+      if (!winter) {
+        ctx.fillStyle = 'rgba(200,230,255,0.85)';
+        const t = performance.now() / 220;
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + t * 0.2;
+          ctx.beginPath(); ctx.arc(c[0] + Math.cos(a) * 6, c[1] - 16 + Math.sin(a) * 3, 1.2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      for (const [i, j, v] of [[0.15, 0.15, 2], [2.85, 0.15, 2], [0.15, 2.85, 2], [2.85, 2.85, 2], [1.5, 0.15, 0], [0.15, 1.5, 0]]) treeAt(ctx, x + i, y + j, v, season, 0.85);
+      top = P(x + 0.15, y + 0.15)[1] - 40;
+      break;
+    }
+    case 'arena': {
+      // Amphithéâtre de pierre : mur extérieur à arcades, gradins et piste de sable
+      const cx = x + 1.5, cy = y + 1.5, R = 1.42, H = 30;
+      const c = P(cx, cy);
+      const rx = R * 45.25, ry = R * 22.63;
+      ground(ctx, x + 0.02, y + 0.02, x + s - 0.02, y + s - 0.02, '#cbbd9a', 'rgba(80,60,30,0.3)');
+      ctx.fillStyle = 'rgba(20,30,15,0.18)';
+      isoEllipse(ctx, cx + 0.15, cy + 0.05, R); ctx.fill();
+      // Mur extérieur (moitié avant visible)
+      ctx.fillStyle = '#c9b48f';
+      ctx.beginPath();
+      ctx.ellipse(c[0], c[1], rx, ry, 0, 0, Math.PI);
+      ctx.ellipse(c[0], c[1] - H, rx, ry, 0, Math.PI, 0, true);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = EDGE; ctx.lineWidth = 1; ctx.stroke();
+      // Arcades sur deux rangs
+      for (const [hv, n] of [[0.18, 14], [0.6, 14]]) {
+        for (let k = 1; k < n; k++) {
+          const a = (k / n) * Math.PI;
+          const px = c[0] + Math.cos(a) * rx, py = c[1] + Math.sin(a) * ry - H * hv;
+          const w = 3.2 * Math.max(0.35, Math.sin(a));
+          ctx.fillStyle = '#5b4a36';
+          ctx.fillRect(px - w, py - 8, w * 2, 8);
+          ctx.beginPath(); ctx.ellipse(px, py - 8, w, 2.2, 0, Math.PI, 0); ctx.fill();
+        }
+      }
+      // Dessus : gradins puis piste
+      ctx.fillStyle = '#ddcca6';
+      isoEllipse(ctx, cx, cy, R, H); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(90,70,40,0.35)';
+      for (let k = 1; k <= 4; k++) { isoEllipse(ctx, cx, cy, R - k * 0.14, H - k * 3); ctx.stroke(); }
+      ctx.fillStyle = season === 3 ? '#eef2f5' : '#e6c98f';
+      isoEllipse(ctx, cx, cy, R * 0.52, H - 16); ctx.fill();
+      ctx.strokeStyle = 'rgba(90,70,40,0.4)'; ctx.stroke();
+      // Oriflammes
+      for (const a of [Math.PI * 1.15, Math.PI * 1.5, Math.PI * 1.85]) {
+        const p = [c[0] + Math.cos(a) * rx * 0.98, c[1] + Math.sin(a) * ry * 0.98 - H];
+        flag(ctx, p, 16, '#b8443a');
+      }
+      top = c[1] - ry - H - 18;
+      break;
+    }
+    case 'lighthouse': {
+      // Socle de pierre, tour rayée et lanterne qui éclaire la nuit (hiver)
+      ground(ctx, x + 0.04, y + 0.04, x + s - 0.04, y + s - 0.04, '#a8a397', 'rgba(60,50,40,0.4)');
+      const base = box(ctx, x + 0.35, y + 0.35, x + 1.65, y + 1.65, 10, '#9d978c', '#b9b3a6', 'flat');
+      let h = base.h, last = base;
+      const segs = 6;
+      for (let k = 0; k < segs; k++) {
+        const ins = 0.6 + k * 0.035;
+        last = box(ctx, x + ins, y + ins, x + 2 - ins, y + 2 - ins, 13, k % 2 ? '#b8443a' : '#f2efe8', '#d8d2c6', 'flat', 0, h);
+        h += 13;
+      }
+      const lamp = box(ctx, x + 0.78, y + 0.78, x + 1.22, y + 1.22, 10, '#ffe8a3', '#2e3a4a', 'dome', 9, h);
+      onFace(ctx, last, 'L', 0.35, 0.65, 0.1, 0.6, '#4a3020');
+      const c = up(P(x + 1, y + 1), h + 5);
+      const glow = ctx.createRadialGradient(c[0], c[1], 1, c[0], c[1], 26);
+      glow.addColorStop(0, 'rgba(255,230,150,0.75)');
+      glow.addColorStop(1, 'rgba(255,230,150,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(c[0], c[1], 26, 0, Math.PI * 2); ctx.fill();
+      const t = performance.now() / 1400;
+      ctx.fillStyle = 'rgba(255,236,170,0.16)';
+      ctx.beginPath(); ctx.moveTo(c[0], c[1]);
+      ctx.arc(c[0], c[1], 90, t, t + 0.35); ctx.closePath(); ctx.fill();
+      top = lamp.top;
+      break;
+    }
+    case 'palace': {
+      // Corps central à dôme doré, deux ailes, colonnade et cour d'honneur
+      ground(ctx, x + 0.04, y + 0.04, x + s - 0.04, y + s - 0.04, '#d8cfbd', 'rgba(80,60,30,0.3)');
+      ground(ctx, x + 2.2, y + 0.9, x + 2.96, y + 2.1, season === 3 ? '#e6ebf0' : '#79b85a');
+      const wl = box(ctx, x + 0.15, y + 0.15, x + 1.0, y + 2.85, 30, '#f4ecdc', '#2c3e66', 'hip', 14);
+      const wr = box(ctx, x + 1.0, y + 0.15, x + 2.85, y + 0.95, 30, '#f4ecdc', '#2c3e66', 'hip', 14);
+      const main = box(ctx, x + 0.95, y + 0.9, x + 2.15, y + 2.1, 40, '#fbf6ea', '#2c3e66', 'hip', 18);
+      for (const bx of [wl, wr]) windows(ctx, bx, 2, 4, '#4a5f7f');
+      windows(ctx, main, 2, 2, '#4a5f7f');
+      for (let i = 0; i < 6; i++) onFace(ctx, main, 'L', 0.1 + i * 0.16, 0.14 + i * 0.16, 0, 0.62, '#ffffff');
+      onFace(ctx, main, 'L', 0, 1, 0.62, 0.68, '#c9a23a');
+      onFace(ctx, main, 'L', 0.42, 0.58, 0, 0.4, '#5a3b22');
+      const dome = box(ctx, x + 1.25, y + 1.2, x + 1.85, y + 1.8, 10, '#fbf6ea', '#d4af37', 'dome', 18, 40);
+      const p = [P(x + 1.55, y + 1.5)[0], dome.top];
+      top = flag(ctx, p, 16, '#2f6fb5');
+      for (const bx of [wl, wr]) flag(ctx, [mid(bx.W, bx.E)[0], bx.top], 10, '#c9a23a');
       break;
     }
     default: {
