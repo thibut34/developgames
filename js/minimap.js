@@ -1,6 +1,6 @@
 // Mini-carte : vue d'ensemble de l'île, cadre de la caméra, toucher pour s'y rendre.
-import { MAP, T } from './config.js';
-import { P, WORLD_W, WORLD_H } from './iso.js';
+import { MAP, TW, TH } from './config.js';
+import { WORLD_W, WORLD_H, OX, OY } from './iso.js';
 import { def } from './game.js';
 
 const TERRAIN_COLORS = ['#7cb35a', '#3f7a35', '#9a958c', '#3f86c6', '#6d645b', '#8fa046', '#e3d29a', '#b5733e', '#d4b13c'];
@@ -18,35 +18,40 @@ export function createMinimap(canvas, cam, mainCanvas, onMove) {
     return { w, h, dpr, scale: Math.min(w / WORLD_W, h / WORLD_H) };
   };
 
+  // Une case = un pixel d'une petite image, projetée ensuite en losange (isométrique) sur la mini-carte.
+  // Bien plus rapide que de dessiner chaque case une par une (la carte en compte plus de 14 000).
+  const tilesCanvas = document.createElement('canvas');
+  tilesCanvas.width = MAP;
+  tilesCanvas.height = MAP;
+  const tctx = tilesCanvas.getContext('2d');
+  const img = tctx.createImageData(MAP, MAP);
+  const px = new Uint32Array(img.data.buffer);
+  const rgba = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return (255 << 24) | ((n & 255) << 16) | (((n >> 8) & 255) << 8) | ((n >> 16) & 255);   // ordre mémoire RGBA
+  };
+  const TERRAIN_PX = TERRAIN_COLORS.map(rgba);
+  const ROAD_PX = rgba('#d9c08e');
+  const pxCache = new Map();
+  const colorPx = (hex) => { let v = pxCache.get(hex); if (v === undefined) { v = rgba(hex); pxCache.set(hex, v); } return v; };
+
   function refresh(g) {
-    const { w, h, dpr, scale } = size();
-    base.width = canvas.width;
-    base.height = canvas.height;
-    bctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
-    const diamond = (x, y, color) => {
-      const pts = [P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)];
-      bctx.beginPath();
-      bctx.moveTo(pts[0][0], pts[0][1]);
-      for (const p of pts.slice(1)) bctx.lineTo(p[0], p[1]);
-      bctx.closePath();
-      bctx.fillStyle = color;
-      bctx.fill();
-      bctx.strokeStyle = color;
-      bctx.lineWidth = 2;
-      bctx.stroke();
-    };
-    for (let y = 0; y < MAP; y++) {
-      for (let x = 0; x < MAP; x++) {
-        const i = y * MAP + x;
-        diamond(x, y, g.roads[i] ? '#d9c08e' : TERRAIN_COLORS[g.tiles[i]]);
-      }
-    }
+    const { dpr, scale } = size();
+    for (let i = 0; i < MAP * MAP; i++) px[i] = g.roads[i] ? ROAD_PX : TERRAIN_PX[g.tiles[i]];
     for (const b of g.buildings) {
       const s = def(b).size;
-      const color = b.fire > 0 ? '#ff3b2f' : b.type === 'townhall' ? '#ffffff' : b.type === 'ruins' ? '#3a3633' : CAT_COLORS[def(b).cat] || '#ddd';
-      for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) diamond(b.x + dx, b.y + dy, color);
+      const color = colorPx(b.fire > 0 ? '#ff3b2f' : b.type === 'townhall' ? '#ffffff' : b.type === 'ruins' ? '#3a3633' : CAT_COLORS[def(b).cat] || '#dddddd');
+      for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) px[(b.y + dy) * MAP + b.x + dx] = color;
     }
-    void w; void h;
+    tctx.putImageData(img, 0, 0);
+    if (base.width !== canvas.width || base.height !== canvas.height) { base.width = canvas.width; base.height = canvas.height; }
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    bctx.clearRect(0, 0, base.width, base.height);
+    // Case (i, j) -> monde : x = (i - j)·TW/2 + OX, y = (i + j)·TH/2 + OY (voir iso.js).
+    const k = dpr * scale;
+    bctx.setTransform((TW / 2) * k, (TH / 2) * k, (-TW / 2) * k, (TH / 2) * k, OX * k, OY * k);
+    bctx.imageSmoothingEnabled = false;
+    bctx.drawImage(tilesCanvas, 0, 0);
   }
 
   function draw() {
