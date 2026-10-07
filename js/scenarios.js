@@ -16,7 +16,7 @@ export const SCENARIOS = [
     id: 'colons', name: 'Les premiers colons', icon: 'house', seed: 1101, difficulty: 1, days: 400,
     intro: 'Une poignée de colons débarque sur une île sauvage. Faites-en un village digne de ce nom avant la fin de la troisième année.',
     goals: [
-      { text: 'Atteindre 80 paysans', check: (g, h) => [h.cls(0), 80] },
+      { text: 'Atteindre 150 paysans', check: (g, h) => [h.cls(0), 150] },
       { text: 'Construire une scierie', check: (g, h) => [h.done('sawmill'), 1] },
       { text: 'Passer à l\'ère du Village', check: (g) => [g.era, 1] },
     ],
@@ -54,7 +54,7 @@ export const SCENARIOS = [
   },
   {
     id: 'savoir', name: 'La cité du savoir', icon: 'flask-conical', seed: 5505, difficulty: 1, days: 700,
-    prebuild: { days: 480, maxEra: 2 },
+    prebuild: { days: 650, maxEra: 2 },
     after(g, api) { g.tech = []; g.rp = 0; api.refresh(); },
     intro: 'Le roi veut faire de votre bourg un phare du savoir. Bâtissez bibliothèques et université, et faites progresser les sciences.',
     goals: [

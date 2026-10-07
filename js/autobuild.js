@@ -2,7 +2,7 @@
 // de chaque classe, commerce et change d'ère tout seul. Sert à tester l'équilibrage
 // (tests/simulation.html) et à préparer les villes de départ des missions de la campagne.
 import * as m from './game.js';
-import { MAP, BUILDINGS, CLASSES, WORKFORCE, GOOD_KEYS, TECHS } from './config.js';
+import { MAP, T, BUILDINGS, CLASSES, WORKFORCE, GOOD_KEYS, TECHS } from './config.js';
 
 // opts : { game, noFire (pas de postes d'incendie), noColonies, maxEra }
 export function createBot(seed, opts = {}) {
@@ -41,7 +41,9 @@ export function createBot(seed, opts = {}) {
     const d = BUILDINGS[type];
     if (!m.canAfford(g, d.cost) || m.eraLocked(g, type)) return false;
     if (!near && failed.has(type)) return false;
-    let list = type === 'wonder' ? spots : frontier;
+    if (bigRetry[type] > g.day) return false;
+    const big = type === 'wonder' || d.monument;
+    let list = big ? spots : frontier;
     if (near) {
       const r = d.service?.r ?? d.decor?.r ?? 3;
       list = [];
@@ -51,24 +53,77 @@ export function createBot(seed, opts = {}) {
       list.sort((a, b) => a[2] - b[2]);
     }
     for (const [x, y] of list) {
-      if ((type === 'wonder' || touchesRoad(x, y, d.size)) && m.canPlace(g, type, x, y).ok) {
+      if ((big || touchesRoad(x, y, d.size)) && m.canPlace(g, type, x, y).ok) {
         m.place(g, type, x, y);
         frontier = frontier.filter(([fx, fy]) => !g.occ[fy * MAP + fx]);
         return true;
       }
     }
+    // Grand bâtiment sans place libre : on défriche une zone de forêt sur l'île principale.
+    if (big && !near && clearFor(type)) return true;
     if (!near) failed.add(type);
+    if (big) bigRetry[type] = g.day + 30;
+    return false;
+  };
+  const bigRetry = {};
+  const clearNearRoads = (n) => {
+    let k = 0;
+    for (const [x, y] of spots) {
+      if (k >= n || g.gold < 100) break;
+      const i = y * MAP + x;
+      if ((g.tiles[i] !== T.FOREST && g.tiles[i] !== T.ROCK) || g.isl.id[i] !== 0) continue;
+      if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => g.roadConn[(y + dy) * MAP + x + dx])) continue;
+      if (m.applyArea(g, 'clear', x, y, x, y).count) k++;
+    }
+    return k;
+  };
+  const clearFor = (type) => {
+    const d = BUILDINGS[type];
+    const ok = new Set([T.GRASS, T.FERTILE, T.SAND, T.FOREST]);
+    for (const [x, y] of spots) {
+      let fits = true;
+      for (let j = 0; j < d.size && fits; j++) {
+        for (let i = 0; i < d.size && fits; i++) {
+          const k = (y + j) * MAP + x + i;
+          if (x + i >= MAP || y + j >= MAP || !ok.has(g.tiles[k]) || g.occ[k] || g.roads[k] || g.isl.id[k] !== 0) fits = false;
+        }
+      }
+      if (!fits) continue;
+      if (d.near != null) {
+        let touch = false;
+        for (let j = -1; j <= d.size && !touch; j++) for (let i = -1; i <= d.size && !touch; i++) if (m.tileAt(g, x + i, y + j) === d.near) touch = true;
+        if (!touch) continue;
+      }
+      m.applyArea(g, 'clear', x, y, x + d.size - 1, y + d.size - 1);
+      if (m.canPlace(g, type, x, y).ok) { m.place(g, type, x, y); return true; }
+    }
     return false;
   };
   const ensure = (type, n) => { if (count(type) < n) return tryPlace(type); return false; };
-  const cover = (type, need, filter) => g.buildings
+  // Quartier trop serré : comme un joueur, on remplace une chaumière proche par le service manquant.
+  const replaceHut = (type, near) => {
+    const d = BUILDINGS[type];
+    if (d.size !== 1 || !m.canAfford(g, d.cost) || m.eraLocked(g, type)) return false;
+    const r = d.service?.r ?? d.decor?.r ?? 3;
+    const hut = houses()
+      .filter((b) => b.level === 1 && b.connected && Math.max(Math.abs(b.x - near.x), Math.abs(b.y - near.y)) <= r)
+      .sort((a, b) => Math.hypot(a.x - near.x, a.y - near.y) - Math.hypot(b.x - near.x, b.y - near.y))[0];
+    if (!hut) return false;
+    m.demolishBuilding(g, hut);
+    m.rebuild(g);
+    return m.place(g, type, hut.x, hut.y).ok;
+  };
+  // Un service déjà construit mais sans ouvriers ne sert à rien : inutile d'en bâtir un autre.
+  const idle = (type) => g.buildings.some((b) => b.type === type && !b.build && BUILDINGS[type].workers && !m.isWorking(b));
+  const cover = (type, need, filter) => !idle(type) && g.buildings
     .filter((b) => filter(b) && !b.cover[need])
     .slice(0, 5)
-    .some((h) => tryPlace(type, h));
+    .some((h) => tryPlace(type, h) || replaceHut(type, h));
   const decorate = (lvl, min) => houses()
     .filter((b) => b.level >= lvl && (b.decor || 0) < min)
     .slice(0, 5)
-    .some((h) => tryPlace('statue', h) || tryPlace('park', h) || tryPlace('fountain', h) || tryPlace('garden', h));
+    .some((h) => tryPlace('statue', h) || tryPlace('park', h) || tryPlace('fountain', h) || tryPlace('garden', h)
+      || replaceHut('statue', h) || replaceHut('fountain', h) || replaceHut('garden', h));
   // Routes en quadrillage tous les 4 cases pour laisser la place aux bâtiments.
   const extendRoads = () => {
     for (const [x, y] of spots) {
@@ -115,9 +170,10 @@ export function createBot(seed, opts = {}) {
   function manageLocks() {
     for (let c = 0; c < CLASSES.length - 1; c++) {
       const jobs = g.buildings.reduce((n, b) => n + (BUILDINGS[b.type].workers?.[0] === c ? BUILDINGS[b.type].workers[1] : 0), 0);
+      const list = houses().filter((h) => h.level === c + 1).sort((a, b) => a.id - b.id);
       const need = (jobs / WORKFORCE) * 1.2 + (c === 0 ? 12 : 0);
       let kept = 0;
-      for (const b of houses().filter((h) => h.level === c + 1).sort((a, b) => a.id - b.id)) {
+      for (const b of list) {
         b.lock = kept < need;
         kept += CLASSES[c].cap;
       }
@@ -128,7 +184,11 @@ export function createBot(seed, opts = {}) {
     refreshFrontier();
     const es = m.eraStatus(g);
     // On économise pour l'ère suivante, ou pour la cathédrale à la dernière ère.
-    const saving = (es && es.reqs[0].ok && !es.ok) || (g.era >= 4 && !g.won);
+    const popOk = es && es.reqs.find((r) => r.max)?.ok;
+    // Après la cathédrale, on économise aussi pour le prochain grand monument.
+    const nextMon = g.won ? ['royalgarden', 'lighthouse', 'arena', 'palace'].find((t) => !count(t) && !m.eraLocked(g, t)) : null;
+    const monSaving = !!nextMon && !m.canAfford(g, BUILDINGS[nextMon].cost);
+    const saving = (popOk && !es.ok) || (g.era >= 4 && !g.won) || monSaving;
     const [p, a, bu, n] = g.cls;
     const pop = p + a + bu + n;
     const hs = houses();
@@ -136,9 +196,16 @@ export function createBot(seed, opts = {}) {
 
     // Nourriture et logement
     ensure('fisher', Math.ceil((p * 0.05) / 2) + 1);
-    if (free < 8 && g.goods.fish + g.goods.bread > 10) tryPlace('house');
-    ensure('lumber', 2 + Math.floor(pop / 60) + count('charcoal'));
-    ensure('sawmill', 1 + Math.floor(pop / 120));
+    // Plus la cité est grande, plus on garde de logements d'avance pour qu'elle continue de grandir.
+    // Plus de place le long des routes : on défriche la forêt et les rochers qui les bordent.
+    if (free < 8 + pop * 0.02 && g.goods.fish + g.goods.bread > 10) {
+      if (!tryPlace('house') && clearNearRoads(4)) refreshFrontier();
+      if (pop > 800) tryPlace('house');
+    }
+    // Bois et planches : seulement si les réserves baissent (sinon les bûcherons prennent tous les paysans).
+    const cap = m.storage(g);
+    if (g.goods.wood < cap * 0.6) ensure('lumber', 2 + Math.floor(pop / 60) + count('charcoal'));
+    if (g.goods.planks < cap * 0.6) ensure('sawmill', 1 + Math.floor(pop / 120));
     ensure('quarry', 1 + g.era);
     cover('well', 'well', (b) => b.type === 'house');
     if (g.day > 25 && !opts.noFire) cover('firestation', 'fire', (b) => b.type !== 'townhall' && BUILDINGS[b.type].fire !== 0);
@@ -148,6 +215,14 @@ export function createBot(seed, opts = {}) {
     const tech = TECHS.filter((t) => m.techStatus(g, t).ok).sort((a, b) => a.cost - b.cost)[0];
     if (tech) m.research(g, tech.id);
 
+    // Les chaînes de production tournent toujours ; l'épargne ne bloque que les services et la décoration.
+    if (g.era >= 2 && saving) {
+      const tools = bu * 0.006 + n * 0.01 + 0.4;
+      ensure('forge', Math.ceil(tools / 1.8));
+      ensure('smelter', count('forge'));
+      if (!ensure('mine', count('smelter')) && count('mine') < count('smelter') && g.tech.includes('navigation') && foundColony('ore')) ensure('mine', count('smelter'));
+      ensure('charcoal', count('smelter'));
+    }
     if (!saving) {
       if (g.era >= 1) {
         const bread = a * 0.05 + bu * 0.06 + n * 0.07 + 0.5;
@@ -165,7 +240,7 @@ export function createBot(seed, opts = {}) {
       }
       if (g.era >= 2) {
         const beer = bu * 0.04 + n * 0.03 + 0.3;
-        const tools = bu * 0.012 + n * 0.02 + 0.4;
+        const tools = bu * 0.006 + n * 0.01 + 0.4;
         ensure('brewery', Math.ceil(beer / 2.8));
         ensure('forge', Math.ceil(tools / 1.8));
         ensure('smelter', count('forge'));
@@ -189,19 +264,26 @@ export function createBot(seed, opts = {}) {
         }
         decorate(3, 4);
       }
-      if (g.goods.wood > 15) extendRoads();
     }
+    // Les routes ne coûtent que du bois : on continue d'en tracer même en épargnant, pour garder de la place.
+    if (g.goods.wood > 15) extendRoads();
     if (g.era >= 4) tryPlace('wonder');
+    // Après la cathédrale : les grands monuments, puis le palais à l'ère de la Capitale.
+    if (nextMon) tryPlace(nextMon);
     manageLocks();
 
-    // Commerce : acheter ce qui manque (coûts de l'ère suivante), vendre les surplus.
-    const site = g.buildings.find((b) => b.type === 'wonder' && b.build);
-    const want = es && saving ? es.next.cost : g.era >= 4 && !count('wonder') ? BUILDINGS.wonder.cost
-      : site ? Object.fromEntries(Object.entries(BUILDINGS.wonder.buildUse).map(([k, v]) => [k, v * 25])) : {};
+    // Commerce : acheter ce qui manque (coûts de l'ère suivante, chantiers), vendre les surplus.
+    const sites = g.buildings.filter((b) => b.build && BUILDINGS[b.type].buildUse);
+    const siteUse = {};
+    for (const b of sites) for (const [k, v] of Object.entries(BUILDINGS[b.type].buildUse)) siteUse[k] = (siteUse[k] || 0) + v * 25;
+    const want = es && popOk && saving ? es.next.cost : g.era >= 4 && !count('wonder') ? BUILDINGS.wonder.cost
+      : monSaving ? { ...siteUse, ...BUILDINGS[nextMon].cost } : siteUse;
     for (const k of GOOD_KEYS) {
-      const target = Math.max(want[k] || 0, ['wood', 'planks', 'stone'].includes(k) ? 40 : 0);
-      if (g.goods[k] < target && g.gold > 300 + (want.gold || 0)) m.buy(g, k, 10);
-      else if (g.goods[k] > m.storage(g) * 0.9) m.sell(g, k, 10);
+      // Petite marge : les habitants consomment aussi ces marchandises pendant la nuit.
+      const target = Math.max(want[k] ? want[k] * 1.15 + 10 : 0, ['wood', 'planks', 'stone'].includes(k) ? 40 : 0);
+      if (g.goods[k] < target) {
+        for (let i = 0; i < 5 && g.goods[k] < target && g.gold > 300 + (want.gold || 0); i++) m.buy(g, k, 10);
+      } else if (g.goods[k] > m.storage(g) * 0.9) m.sell(g, k, 10);
     }
     // Riche : acheter ce qui manque aux habitants.
     if (g.gold > 1500 && !saving) {

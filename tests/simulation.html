@@ -13,13 +13,13 @@
 </head>
 <body>
   <h1>Simulation automatique (joueur robot)</h1>
-  <p>Paramètres d'adresse : <code>?seeds=1,2,3&amp;days=3000</code></p>
+  <p>Paramètres d'adresse : <code>?seeds=1,2,3&amp;days=8000</code></p>
   <pre id="out">Calcul…</pre>
   <script type="module">
     import { simulate } from './bot.js';
     const q = new URLSearchParams(location.search);
     const seeds = (q.get('seeds') || '12345,42,777').split(',').map(Number);
-    const days = Number(q.get('days') || 3000);
+    const days = Number(q.get('days') || 8000);
     const out = document.getElementById('out');
     out.textContent = '';
     const results = [];
@@ -33,8 +33,11 @@
       out.innerHTML = done;
     }
     const won = results.filter((r) => r.won);
+    const pal = results.filter((r) => r.palace);
+    const avg = (list, k) => Math.round(list.reduce((n, r) => n + r[k], 0) / list.length);
     out.innerHTML += `<b class="${won.length === results.length ? 'ok' : 'ko'}">Victoires : ${won.length}/${results.length}`
-      + (won.length ? ` · jour moyen ${Math.round(won.reduce((n, r) => n + r.day, 0) / won.length)}` : '') + '</b>';
+      + (won.length ? ` · cathédrale jour moyen ${avg(won, 'wonderDay')}` : '')
+      + ` · palais ${pal.length}/${results.length}` + (pal.length ? ` jour moyen ${avg(pal, 'day')}` : '') + '</b>';
     window.simulationResults = results;
   </script>
 </body>

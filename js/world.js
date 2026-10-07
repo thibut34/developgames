@@ -51,11 +51,11 @@ export function islandLayout(seed) {
   const c = MAP / 2;
   const kinds = ['spice', 'gold', 'fertile', 'ore'];
   for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
-  const list = [{ kind: 'home', cx: c, cy: c, r: 21 }];
+  const list = [{ kind: 'home', cx: c, cy: c, r: 30 }];
   kinds.forEach((kind, i) => {
     const a = Math.PI / 4 + (i * Math.PI) / 2 + (r() - 0.5) * 0.5;
-    const d = 37 + r() * 1.5;
-    list.push({ kind, cx: c + Math.cos(a) * d, cy: c + Math.sin(a) * d, r: 7.5 + r() * 1.5 });
+    const d = 50 + r() * 1.5;
+    list.push({ kind, cx: c + Math.cos(a) * d, cy: c + Math.sin(a) * d, r: 10 + r() * 2 });
   });
   return list;
 }

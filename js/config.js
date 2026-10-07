@@ -4,9 +4,9 @@ import en from './lang-en.js';
 
 export const TW = 64;            // largeur d'une case isométrique (pixels monde)
 export const TH = 32;            // hauteur d'une case isométrique
-export const MAP = 88;           // la carte fait MAP × MAP cases (archipel)
+export const MAP = 120;          // la carte fait MAP × MAP cases (archipel)
 
-export const DAY_MS = 3000;      // durée d'un jour à vitesse ×1
+export const DAY_MS = 5000;      // durée d'un jour à vitesse ×1
 export const DAYS_PER_SEASON = 30;
 export const SEASONS = [
   { name: 'Printemps', icon: 'flower' },
@@ -102,7 +102,7 @@ export const CLASSES = [
       { good: 'bread', rate: 0.06 },
       { good: 'cloth', rate: 0.04 },
       { good: 'beer', rate: 0.04 },
-      { good: 'tools', rate: 0.012 },
+      { good: 'tools', rate: 0.006 },
       { service: 'market', label: 'Marché' },
       { service: 'chapel', label: 'Chapelle' },
       { service: 'tavern', label: 'Taverne' },
@@ -120,7 +120,7 @@ export const CLASSES = [
       { good: 'cloth', rate: 0.05 },
       { good: 'beer', rate: 0.03 },
       { good: 'wine', rate: 0.04 },
-      { good: 'tools', rate: 0.02 },
+      { good: 'tools', rate: 0.01 },
       { good: 'spices', rate: 0.03 },
       { good: 'jewels', rate: 0.012 },
       { service: 'market', label: 'Marché' },
@@ -144,12 +144,12 @@ export const TAXES = [
 // need : [classe, nombre d'habitants de cette classe]
 export const ERAS = [
   { name: 'Hameau' },
-  { name: 'Village', need: [0, 60], cost: { planks: 40, gold: 400 } },
-  { name: 'Bourg', need: [1, 80], cost: { planks: 80, stone: 60, gold: 1200 } },
-  { name: 'Ville', need: [2, 80], cost: { stone: 150, tools: 40, gold: 3000 } },
-  { name: 'Cité', need: [3, 60], cost: { stone: 250, tools: 80, gold: 6000 } },
+  { name: 'Village', need: [0, 150], cost: { planks: 80, gold: 800 } },
+  { name: 'Bourg', need: [1, 300], cost: { planks: 160, stone: 120, gold: 2500 } },
+  { name: 'Ville', need: [2, 350], cost: { stone: 300, tools: 80, gold: 6000 } },
+  { name: 'Cité', need: [3, 350], cost: { stone: 500, tools: 160, gold: 12000 } },
   // Après la Grande Cathédrale : une très grande cité, pour qui veut continuer à bâtir.
-  { name: 'Capitale', need: [3, 250], cost: { stone: 400, tools: 150, jewels: 60, gold: 15000 }, after: 'wonder' },
+  { name: 'Capitale', need: [3, 1200], cost: { stone: 800, tools: 150, gold: 30000 }, after: 'wonder' },
 ];
 
 export const CATEGORIES = [
@@ -339,37 +339,37 @@ export const BUILDINGS = {
     desc: 'Meilleurs prix au commerce et caravanes plus fréquentes.', look: 'trading', wall: '#b88a5a', roof: '#2f5c6b', h: 18,
   },
   wonder: {
-    name: 'Grande Cathédrale', cat: 'service', era: 4, size: 3, unique: true, buildDays: 120, fire: 0,
+    name: 'Grande Cathédrale', cat: 'service', era: 4, size: 3, unique: true, buildDays: 250, fire: 0,
     cost: { planks: 200, stone: 400, tools: 80, gold: 6000 },
     buildUse: { stone: 4, planks: 2, tools: 1 },
     service: { type: 'chapel', r: 14 }, decor: { v: 5, r: 7 },
-    desc: 'La merveille de votre cité : 120 jours de chantier qui consomment chaque jour 4 pierre, 2 planches et 1 outil (le chantier s\'arrête s\'ils manquent). L\'achever, c\'est gagner la partie.', look: 'wonder',
+    desc: 'La merveille de votre cité : 250 jours de chantier qui consomment chaque jour 4 pierre, 2 planches et 1 outil (le chantier s\'arrête s\'ils manquent). L\'achever, c\'est gagner la partie.', look: 'wonder',
   },
   // --- Grands monuments (après la Grande Cathédrale) ---
   // after : bâtiment à achever d'abord. effect : bonus pour toute la cité une fois le chantier fini.
   royalgarden: {
-    name: 'Jardins royaux', cat: 'deco', era: 4, after: 'wonder', size: 3, unique: true, monument: true, buildDays: 60, fire: 0,
-    cost: { wood: 100, stone: 150, gold: 5000 }, buildUse: { stone: 2, planks: 1 },
+    name: 'Jardins royaux', cat: 'deco', era: 4, after: 'wonder', size: 3, unique: true, monument: true, buildDays: 120, fire: 0,
+    cost: { wood: 150, stone: 250, gold: 8000 }, buildUse: { stone: 2, planks: 1 },
     decor: { v: 6, r: 9 }, effect: { sat: 0.03 },
-    desc: 'Grand monument : 60 jours de chantier (2 pierre et 1 planche par jour). Beauté +6 sur 9 cases et satisfaction de toute la cité +3 %.', look: 'royalgarden',
+    desc: 'Grand monument : 120 jours de chantier (2 pierre et 1 planche par jour). Beauté +6 sur 9 cases et satisfaction de toute la cité +3 %.', look: 'royalgarden',
   },
   arena: {
-    name: 'Arènes', cat: 'service', era: 4, after: 'wonder', size: 3, unique: true, monument: true, buildDays: 90, fire: 0,
-    cost: { stone: 300, tools: 40, gold: 8000 }, buildUse: { stone: 4, tools: 1 },
+    name: 'Arènes', cat: 'service', era: 4, after: 'wonder', size: 3, unique: true, monument: true, buildDays: 180, fire: 0,
+    cost: { stone: 450, tools: 60, gold: 12000 }, buildUse: { stone: 4, tools: 1 },
     service: { type: 'tavern', r: 16 }, effect: { sat: 0.05 },
-    desc: 'Grand monument : 90 jours de chantier (4 pierre et 1 outil par jour). Divertit les maisons à 16 cases et satisfaction de toute la cité +5 %.', look: 'arena',
+    desc: 'Grand monument : 180 jours de chantier (4 pierre et 1 outil par jour). Divertit les maisons à 16 cases et satisfaction de toute la cité +5 %.', look: 'arena',
   },
   lighthouse: {
-    name: 'Grand phare', cat: 'service', era: 4, after: 'wonder', size: 2, unique: true, monument: true, buildDays: 75, fire: 0,
-    cost: { stone: 200, tools: 30, gold: 6000 }, buildUse: { stone: 3, planks: 1 }, near: T.WATER,
+    name: 'Grand phare', cat: 'service', era: 4, after: 'wonder', size: 2, unique: true, monument: true, buildDays: 150, fire: 0,
+    cost: { stone: 300, tools: 45, gold: 9000 }, buildUse: { stone: 3, planks: 1 }, near: T.WATER,
     effect: { trade: 1.2 },
-    desc: 'Grand monument au bord de l\'eau : 75 jours de chantier (3 pierre et 1 planche par jour). Les marchands affluent : achats 20 % moins chers, ventes 20 % plus chères.', look: 'lighthouse',
+    desc: 'Grand monument au bord de l\'eau : 150 jours de chantier (3 pierre et 1 planche par jour). Les marchands affluent : achats 20 % moins chers, ventes 20 % plus chères.', look: 'lighthouse',
   },
   palace: {
-    name: 'Palais royal', cat: 'service', era: 5, size: 3, unique: true, monument: true, buildDays: 150, fire: 0,
-    cost: { stone: 500, tools: 100, jewels: 40, gold: 20000 }, buildUse: { stone: 5, tools: 2, cloth: 1 },
+    name: 'Palais royal', cat: 'service', era: 5, size: 3, unique: true, monument: true, buildDays: 300, fire: 0,
+    cost: { stone: 750, tools: 150, gold: 30000 }, buildUse: { stone: 5, tools: 2 },
     decor: { v: 5, r: 8 }, effect: { tax: 1.25 },
-    desc: 'Le plus grand des monuments : 150 jours de chantier (5 pierre, 2 outils et 1 tissu par jour). Impôts de toute la cité +25 % et beauté +5 sur 8 cases.', look: 'palace',
+    desc: 'Le plus grand des monuments : 300 jours de chantier (5 pierre et 2 outils par jour). Impôts de toute la cité +25 % et beauté +5 sur 8 cases.', look: 'palace',
   },
   library: {
     name: 'Bibliothèque', cat: 'service', era: 0, size: 1, cost: { wood: 20, planks: 10, gold: 80 }, workers: [0, 2],
@@ -439,30 +439,30 @@ export const FIRE = {
 // effect : prod (multiplicateur par bâtiment), range (+cases de portée par service), fireHouse, storage,
 // upkeep, tax, sat, research, wonderTime. Les bâtiments avec « tech » sont débloqués par la technologie.
 export const TECHS = [
-  { id: 'axes', name: 'Haches affûtées', era: 0, cost: 25, icon: 'axe', desc: 'Bûcherons +25 %.', effect: { prod: { lumber: 1.25 } } },
-  { id: 'nets', name: 'Grands filets', era: 0, cost: 35, icon: 'fish', desc: 'Pêcheurs +25 %.', effect: { prod: { fisher: 1.25 } } },
-  { id: 'masonry', name: 'Maçonnerie', era: 0, cost: 50, icon: 'brick-wall', desc: 'Risque d\'incendie des maisons −40 %.', effect: { fireHouse: 0.6 } },
-  { id: 'accounting', name: 'Comptabilité', era: 0, cost: 60, icon: 'receipt', desc: 'Stockage +50 par marchandise.', effect: { storage: 50 } },
-  { id: 'plough', name: 'Charrue lourde', era: 1, cost: 120, icon: 'wheat', req: ['axes'], desc: 'Fermes céréalières +25 %.', effect: { prod: { farm: 1.25 } } },
-  { id: 'watermill', name: 'Meunerie', era: 1, cost: 150, icon: 'cog', req: ['plough'], desc: 'Moulins et boulangeries +20 %.', effect: { prod: { mill: 1.2, bakery: 1.2 } } },
-  { id: 'loom', name: 'Métier à tisser', era: 1, cost: 160, icon: 'shirt', desc: 'Bergeries et tisserands +25 %.', effect: { prod: { sheep: 1.25, weaver: 1.25 } } },
-  { id: 'medicine', name: 'Médecine', era: 1, cost: 140, icon: 'stethoscope', desc: 'Débloque le médecin.', effect: {} },
-  { id: 'militia', name: 'Milice', era: 1, cost: 130, icon: 'shield-check', desc: 'Débloque le poste de garde.', effect: {} },
-  { id: 'firepump', name: 'Pompe à incendie', era: 1, cost: 180, icon: 'droplets', req: ['masonry'], desc: 'Portée des postes d\'incendie +2.', effect: { range: { fire: 2 } } },
-  { id: 'administration', name: 'Administration', era: 2, cost: 300, icon: 'landmark', req: ['accounting'], desc: 'Entretien des bâtiments −15 %.', effect: { upkeep: 0.85 } },
-  { id: 'hops', name: 'Houblon', era: 2, cost: 280, icon: 'beer', desc: 'Brasseries +30 %.', effect: { prod: { brewery: 1.3 } } },
-  { id: 'blast', name: 'Haut fourneau', era: 2, cost: 380, icon: 'flame-kindling', desc: 'Charbonniers, fonderies et forges +25 %.', effect: { prod: { charcoal: 1.25, smelter: 1.25, forge: 1.25 } } },
-  { id: 'cadastre', name: 'Cadastre', era: 2, cost: 400, icon: 'map', req: ['administration'], desc: 'Impôts +10 %.', effect: { tax: 1.1 } },
-  { id: 'hygiene', name: 'Hygiène', era: 2, cost: 420, icon: 'droplets', req: ['medicine'], desc: 'Satisfaction de tous les habitants +5 %.', effect: { sat: 0.05 } },
-  { id: 'navigation', name: 'Navigation', era: 2, cost: 500, icon: 'compass', desc: 'Débloque le port et la colonisation des îles voisines.', effect: {} },
-  { id: 'printing', name: 'Imprimerie', era: 3, cost: 700, icon: 'book-open', req: ['hygiene'], desc: 'Recherche +30 % et portée des écoles +2.', effect: { research: 1.3, range: { school: 2 } } },
-  { id: 'surgery', name: 'Chirurgie', era: 3, cost: 750, icon: 'heart-pulse', req: ['medicine'], desc: 'Débloque l\'hôpital.', effect: {} },
-  { id: 'vines', name: 'Taille de la vigne', era: 3, cost: 650, icon: 'grape', desc: 'Vignobles et pressoirs +25 %.', effect: { prod: { vineyard: 1.25, winepress: 1.25 } } },
-  { id: 'colonial', name: 'Commerce colonial', era: 3, cost: 900, icon: 'ship', req: ['navigation'], desc: 'Débloque plantations d\'épices et mines d\'or sur les îles.', effect: {} },
-  { id: 'goldsmith', name: 'Orfèvrerie', era: 3, cost: 1000, icon: 'gem', req: ['colonial'], desc: 'Débloque l\'orfèvre (bijoux).', effect: {} },
-  { id: 'banking', name: 'Banque', era: 4, cost: 1500, icon: 'coins', req: ['cadastre'], desc: 'Impôts +15 %.', effect: { tax: 1.15 } },
-  { id: 'architecture', name: 'Architecture', era: 4, cost: 1800, icon: 'castle', desc: 'Chantier de la Grande Cathédrale −35 %.', effect: { wonderTime: 0.65 } },
-  { id: 'astronomy', name: 'Astronomie', era: 4, cost: 2400, icon: 'star', req: ['printing'], desc: 'Satisfaction +5 % et recherche +30 %.', effect: { sat: 0.05, research: 1.3 } },
+  { id: 'axes', name: 'Haches affûtées', era: 0, cost: 40, icon: 'axe', desc: 'Bûcherons +25 %.', effect: { prod: { lumber: 1.25 } } },
+  { id: 'nets', name: 'Grands filets', era: 0, cost: 50, icon: 'fish', desc: 'Pêcheurs +25 %.', effect: { prod: { fisher: 1.25 } } },
+  { id: 'masonry', name: 'Maçonnerie', era: 0, cost: 75, icon: 'brick-wall', desc: 'Risque d\'incendie des maisons −40 %.', effect: { fireHouse: 0.6 } },
+  { id: 'accounting', name: 'Comptabilité', era: 0, cost: 90, icon: 'receipt', desc: 'Stockage +50 par marchandise.', effect: { storage: 50 } },
+  { id: 'plough', name: 'Charrue lourde', era: 1, cost: 180, icon: 'wheat', req: ['axes'], desc: 'Fermes céréalières +25 %.', effect: { prod: { farm: 1.25 } } },
+  { id: 'watermill', name: 'Meunerie', era: 1, cost: 225, icon: 'cog', req: ['plough'], desc: 'Moulins et boulangeries +20 %.', effect: { prod: { mill: 1.2, bakery: 1.2 } } },
+  { id: 'loom', name: 'Métier à tisser', era: 1, cost: 240, icon: 'shirt', desc: 'Bergeries et tisserands +25 %.', effect: { prod: { sheep: 1.25, weaver: 1.25 } } },
+  { id: 'medicine', name: 'Médecine', era: 1, cost: 210, icon: 'stethoscope', desc: 'Débloque le médecin.', effect: {} },
+  { id: 'militia', name: 'Milice', era: 1, cost: 195, icon: 'shield-check', desc: 'Débloque le poste de garde.', effect: {} },
+  { id: 'firepump', name: 'Pompe à incendie', era: 1, cost: 270, icon: 'droplets', req: ['masonry'], desc: 'Portée des postes d\'incendie +2.', effect: { range: { fire: 2 } } },
+  { id: 'administration', name: 'Administration', era: 2, cost: 450, icon: 'landmark', req: ['accounting'], desc: 'Entretien des bâtiments −15 %.', effect: { upkeep: 0.85 } },
+  { id: 'hops', name: 'Houblon', era: 2, cost: 420, icon: 'beer', desc: 'Brasseries +30 %.', effect: { prod: { brewery: 1.3 } } },
+  { id: 'blast', name: 'Haut fourneau', era: 2, cost: 570, icon: 'flame-kindling', desc: 'Charbonniers, fonderies et forges +25 %.', effect: { prod: { charcoal: 1.25, smelter: 1.25, forge: 1.25 } } },
+  { id: 'cadastre', name: 'Cadastre', era: 2, cost: 600, icon: 'map', req: ['administration'], desc: 'Impôts +10 %.', effect: { tax: 1.1 } },
+  { id: 'hygiene', name: 'Hygiène', era: 2, cost: 630, icon: 'droplets', req: ['medicine'], desc: 'Satisfaction de tous les habitants +5 %.', effect: { sat: 0.05 } },
+  { id: 'navigation', name: 'Navigation', era: 2, cost: 750, icon: 'compass', desc: 'Débloque le port et la colonisation des îles voisines.', effect: {} },
+  { id: 'printing', name: 'Imprimerie', era: 3, cost: 1050, icon: 'book-open', req: ['hygiene'], desc: 'Recherche +30 % et portée des écoles +2.', effect: { research: 1.3, range: { school: 2 } } },
+  { id: 'surgery', name: 'Chirurgie', era: 3, cost: 1125, icon: 'heart-pulse', req: ['medicine'], desc: 'Débloque l\'hôpital.', effect: {} },
+  { id: 'vines', name: 'Taille de la vigne', era: 3, cost: 975, icon: 'grape', desc: 'Vignobles et pressoirs +25 %.', effect: { prod: { vineyard: 1.25, winepress: 1.25 } } },
+  { id: 'colonial', name: 'Commerce colonial', era: 3, cost: 1350, icon: 'ship', req: ['navigation'], desc: 'Débloque plantations d\'épices et mines d\'or sur les îles.', effect: {} },
+  { id: 'goldsmith', name: 'Orfèvrerie', era: 3, cost: 1500, icon: 'gem', req: ['colonial'], desc: 'Débloque l\'orfèvre (bijoux).', effect: {} },
+  { id: 'banking', name: 'Banque', era: 4, cost: 2250, icon: 'coins', req: ['cadastre'], desc: 'Impôts +15 %.', effect: { tax: 1.15 } },
+  { id: 'architecture', name: 'Architecture', era: 4, cost: 2700, icon: 'castle', desc: 'Chantier de la Grande Cathédrale −35 %.', effect: { wonderTime: 0.65 } },
+  { id: 'astronomy', name: 'Astronomie', era: 4, cost: 3600, icon: 'star', req: ['printing'], desc: 'Satisfaction +5 % et recherche +30 %.', effect: { sat: 0.05, research: 1.3 } },
 ];
 
 // ---------- Objectifs guidés ----------
@@ -473,32 +473,32 @@ export const QUESTS = [
   { text: 'Construire un bûcheron au bord d\'une forêt', check: (g, h) => [h.count('lumber'), 1], reward: { wood: 20 } },
   { text: 'Construire un puits près des maisons', check: (g, h) => [h.count('well'), 1], reward: { gold: 50 } },
   { text: 'Construire une scierie', check: (g, h) => [h.count('sawmill'), 1], reward: { planks: 10 } },
-  { text: 'Atteindre 30 paysans', check: (g, h) => [h.cls(0), 30], reward: { gold: 100 } },
+  { text: 'Atteindre 50 paysans', check: (g, h) => [h.cls(0), 50], reward: { gold: 150 } },
   { text: 'Construire un poste d\'incendie', check: (g, h) => [h.count('firestation'), 1], reward: { planks: 10 } },
-  { text: 'Atteindre 60 paysans', check: (g, h) => [h.cls(0), 60], reward: { gold: 150 } },
+  { text: 'Atteindre 150 paysans', check: (g, h) => [h.cls(0), 150], reward: { gold: 300 } },
   { text: 'Passer à l\'ère du Village', check: (g) => [g.era, 1], reward: { planks: 20 } },
   { text: 'Produire du pain : ferme, moulin et boulangerie', check: (g, h) => [Math.min(1, h.count('farm')) + Math.min(1, h.count('mill')) + Math.min(1, h.count('bakery')), 3], reward: { bread: 20 } },
   { text: 'Produire du tissu : bergerie et tisserand', check: (g, h) => [Math.min(1, h.count('sheep')) + Math.min(1, h.count('weaver')), 2], reward: { cloth: 15 } },
   { text: 'Construire une chapelle et un marché', check: (g, h) => [Math.min(1, h.count('chapel')) + Math.min(1, h.count('market')), 2], reward: { gold: 200 } },
-  { text: 'Atteindre 40 artisans', check: (g, h) => [h.cls(1), 40], reward: { gold: 250 } },
+  { text: 'Atteindre 200 artisans', check: (g, h) => [h.cls(1), 200], reward: { gold: 500 } },
   { text: 'Passer à l\'ère du Bourg', check: (g) => [g.era, 2], reward: { gold: 300 } },
   { text: 'Produire des outils : mine, charbonnier, fonderie, forge', check: (g, h) => [['mine', 'charcoal', 'smelter', 'forge'].reduce((n, t) => n + Math.min(1, h.count(t)), 0), 4], reward: { tools: 15 } },
   { text: 'Construire une brasserie, une taverne et une école', check: (g, h) => [Math.min(1, h.count('brewery')) + Math.min(1, h.count('tavern')) + Math.min(1, h.count('school')), 3], reward: { gold: 400 } },
-  { text: 'Atteindre 40 bourgeois', check: (g, h) => [h.cls(2), 40], reward: { tools: 20 } },
+  { text: 'Atteindre 250 bourgeois', check: (g, h) => [h.cls(2), 250], reward: { tools: 40 } },
   { text: 'Passer à l\'ère de la Ville', check: (g) => [g.era, 3], reward: { gold: 800 } },
   { text: 'Produire du vin : vignoble et pressoir', check: (g, h) => [Math.min(1, h.count('vineyard')) + Math.min(1, h.count('winepress')), 2], reward: { wine: 20 } },
   { text: 'Construire un port sur l\'île principale', check: (g, h) => [h.homePorts(), 1], reward: { planks: 40 } },
   { text: 'Fonder une colonie : un port sur une autre île', check: (g, h) => [h.colonies(), 1], reward: { gold: 500 } },
   { text: 'Récolter des épices et des pépites d\'or', check: (g, h) => [Math.min(1, h.count('spicefarm')) + Math.min(1, h.count('goldmine')), 2], reward: { spices: 20 } },
   { text: 'Fabriquer des bijoux chez un orfèvre', check: (g, h) => [h.count('jeweler'), 1], reward: { jewels: 10 } },
-  { text: 'Atteindre 40 nobles', check: (g, h) => [h.cls(3), 40], reward: { gold: 1500 } },
+  { text: 'Atteindre 250 nobles', check: (g, h) => [h.cls(3), 250], reward: { gold: 3000 } },
   { text: 'Passer à l\'ère de la Cité', check: (g) => [g.era, 4], reward: { gold: 2000 } },
   { text: 'Achever la Grande Cathédrale', check: (g, h) => [h.done('wonder'), 1], reward: { gold: 5000 } },
   { text: 'Achever les Jardins royaux', check: (g, h) => [h.done('royalgarden'), 1], reward: { gold: 3000 } },
-  { text: 'Atteindre 2 000 habitants', check: (g, h) => [h.pop(), 2000], reward: { gold: 4000 } },
+  { text: 'Atteindre 5 000 habitants', check: (g, h) => [h.pop(), 5000], reward: { gold: 8000 } },
   { text: 'Achever le Grand phare', check: (g, h) => [h.done('lighthouse'), 1], reward: { gold: 4000 } },
   { text: 'Achever les Arènes', check: (g, h) => [h.done('arena'), 1], reward: { gold: 5000 } },
-  { text: 'Atteindre 150 nobles', check: (g, h) => [h.cls(3), 150], reward: { jewels: 30 } },
+  { text: 'Atteindre 1 000 nobles', check: (g, h) => [h.cls(3), 1000], reward: { jewels: 60 } },
   { text: 'Passer à l\'ère de la Capitale', check: (g) => [g.era, 5], reward: { gold: 10000 } },
   { text: 'Achever le Palais royal', check: (g, h) => [h.done('palace'), 1], reward: { gold: 15000 } },
 ];
@@ -507,14 +507,14 @@ export const QUESTS = [
 // Paliers de population sans fin : chacun donne un titre à la cité et une récompense.
 // Au-delà de la liste, un nouveau palier tous les RENOWN_STEP habitants.
 export const RENOWN = [
-  { pop: 1500, title: 'Cité prospère', reward: { gold: 3000 } },
-  { pop: 2500, title: 'Grande cité', reward: { gold: 5000 } },
-  { pop: 4000, title: 'Cité royale', reward: { gold: 8000 } },
-  { pop: 6000, title: 'Joyau du royaume', reward: { gold: 12000 } },
-  { pop: 8500, title: 'Capitale du royaume', reward: { gold: 16000 } },
-  { pop: 11500, title: 'Métropole légendaire', reward: { gold: 20000 } },
+  { pop: 3000, title: 'Cité prospère', reward: { gold: 5000 } },
+  { pop: 5000, title: 'Grande cité', reward: { gold: 8000 } },
+  { pop: 7500, title: 'Cité royale', reward: { gold: 12000 } },
+  { pop: 10000, title: 'Joyau du royaume', reward: { gold: 16000 } },
+  { pop: 13000, title: 'Capitale du royaume', reward: { gold: 20000 } },
+  { pop: 17000, title: 'Métropole légendaire', reward: { gold: 25000 } },
 ];
-export const RENOWN_STEP = 4000;
+export const RENOWN_STEP = 5000;
 
 // ---------- Version anglaise : les textes de lang-en.js remplacent les textes français ----------
 if (EN) {

@@ -10,12 +10,17 @@ export async function simulate(seed, days, every = 100, onProgress = () => {}) {
   const lines = [];
   let errors = 0;
   const t0 = performance.now();
-  for (let d = 0; d < days && !bot.g.won; d++) {
+  // La partie va jusqu'au Palais royal ; on note aussi le jour de la Grande Cathédrale.
+  const done = (t) => bot.g.buildings.some((b) => b.type === t && !b.build);
+  let wonderDay = null;
+  for (let d = 0; d < days && !done('palace'); d++) {
     try { bot.day(); } catch (e) { if (errors++ < 3) lines.push(`ERREUR : ${e.stack}`); }
+    if (wonderDay === null && bot.g.won) { wonderDay = bot.g.day; lines.push(`>> Grande Cathédrale achevée au jour ${wonderDay}`); }
     if (bot.g.day % every === 0) { lines.push(bot.summary()); onProgress(lines); }
     if (d % 25 === 0) await new Promise((r) => setTimeout(r, 0));
   }
   lines.push(`(${Math.round((performance.now() - t0) / 1000)} s de calcul)`);
-  lines.push(`FIN : ${bot.summary()} · ${bot.g.won ? 'VICTOIRE' : 'pas de victoire'} · ${errors} erreur(s)`);
-  return { lines, won: bot.g.won, day: bot.g.day, errors };
+  const palace = done('palace');
+  lines.push(`FIN : ${bot.summary()} · cathédrale ${wonderDay ? `jour ${wonderDay}` : 'non'} · palais ${palace ? `jour ${bot.g.day}` : 'non'} · ${errors} erreur(s)`);
+  return { lines, won: bot.g.won, day: bot.g.day, wonderDay, palace, errors };
 }

@@ -9,7 +9,7 @@ import { DIFFICULTIES, findScenario } from './scenarios.js';
 import { L } from './i18n.js';
 import { store } from './platform.js';
 
-const SAVE_KEY = 'developgames-save-v4';
+const SAVE_KEY = 'developgames-save-v5';
 
 export const def = (b) => BUILDINGS[b.type];
 const idx = (x, y) => y * MAP + x;
@@ -233,17 +233,44 @@ function assignWorkers(g) {
   g.idle = avail;
 }
 
+// Cartes de couverture : chaque service « peint » sa zone (son emprise élargie de sa portée), puis chaque
+// bâtiment lit ses propres cases. Bien plus rapide que de comparer chaque bâtiment à chaque service.
+const coverGrids = new Map();
+let decorGrid = null;
+
+// Rectangle de cases à moins de r d'une emprise (distance en cases, comme footprintDist).
+function paint(grid, b, r, v, add) {
+  const s = def(b).size;
+  const x0 = Math.max(0, b.x - r), y0 = Math.max(0, b.y - r);
+  const x1 = Math.min(MAP - 1, b.x + s - 1 + r), y1 = Math.min(MAP - 1, b.y + s - 1 + r);
+  for (let y = y0; y <= y1; y++) {
+    const row = y * MAP;
+    for (let x = x0; x <= x1; x++) if (add) grid[row + x] += v; else grid[row + x] = 1;
+  }
+}
+
 function computeCoverage(g) {
-  const services = g.buildings.filter((b) => def(b).service && isWorking(b) && (b.connected || !def(b).workers));
-  const decors = g.buildings.filter((b) => def(b).decor && !b.build);
+  for (const grid of coverGrids.values()) grid.fill(0);
+  if (!decorGrid) decorGrid = new Uint16Array(MAP * MAP);
+  decorGrid.fill(0);
+  for (const s of g.buildings) {
+    const d = def(s);
+    if (d.service && isWorking(s) && (s.connected || !d.workers)) {
+      let grid = coverGrids.get(d.service.type);
+      if (!grid) { grid = new Uint8Array(MAP * MAP); coverGrids.set(d.service.type, grid); }
+      paint(grid, s, serviceRange(g, d), 1, false);
+    }
+    if (d.decor && !s.build) paint(decorGrid, s, d.decor.r, d.decor.v, true);
+  }
   for (const b of g.buildings) {
     b.cover = {};
-    for (const s of services) {
-      if (footprintDist(b, s) <= serviceRange(g, def(s))) b.cover[def(s).service.type] = true;
+    const sz = def(b).size;
+    for (const [type, grid] of coverGrids) {
+      let hit = false;
+      for (let dy = 0; dy < sz && !hit; dy++) for (let dx = 0; dx < sz && !hit; dx++) if (grid[idx(b.x + dx, b.y + dy)]) hit = true;
+      if (hit) b.cover[type] = true;
     }
-    if (isHouse(b)) {
-      b.decor = decors.reduce((n, d) => n + (footprintDist(b, d) <= def(d).decor.r ? def(d).decor.v : 0), 0);
-    }
+    if (isHouse(b)) b.decor = decorGrid[idx(b.x, b.y)];
   }
 }
 
@@ -1003,7 +1030,7 @@ export function step(g) {
 
 export function serialize(g) {
   return JSON.stringify({
-    v: 4, seed: g.seed, cleared: g.cleared, roads: [...g.roads.keys()].filter((i) => g.roads[i]),
+    v: 5, seed: g.seed, cleared: g.cleared, roads: [...g.roads.keys()].filter((i) => g.roads[i]),
     buildings: g.buildings.map(({ id, type, x, y, level, res, lock, paused, fire, build }) => ({ id, type, x, y, level, res, lock, paused, fire, build })),
     goods: g.goods, gold: g.gold, day: g.day, era: g.era, tax: g.tax, quest: g.quest,
     log: g.log.slice(0, 50), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats, alerts: g.alerts,
@@ -1014,7 +1041,7 @@ export function serialize(g) {
 
 export function deserialize(text) {
   const d = JSON.parse(text);
-  if (!d || d.v !== 4) return null;
+  if (!d || d.v !== 5) return null;
   const g = { ...d, tiles: generateMap(d.seed), roads: new Uint8Array(MAP * MAP) };
   for (const i of d.cleared) g.tiles[i] = T.GRASS;
   g.filled ??= [];
