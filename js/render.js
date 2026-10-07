@@ -125,14 +125,16 @@ function drawTerrain(ctx, g, s, X0, Y0, X1, Y1) {
 
 // Routes : chaque forme (raccords, pavée ou non, reliée ou non) est dessinée une fois dans une image.
 const roadSprites = new Map();
+let roadScale = 0;
 function drawRoadCached(ctx, g, x, y, paved, connected, zoom) {
   const mask = (roadAt(g, x + 1, y) ? 1 : 0) | (roadAt(g, x - 1, y) ? 2 : 0) | (roadAt(g, x, y + 1) ? 4 : 0) | (roadAt(g, x, y - 1) ? 8 : 0);
   const scale = Math.max(0.25, Math.min(3, Math.round(zoom * 4) / 4));
   const variant = paved ? (x * 7 + y * 13) % 4 : 0;
   const key = `${mask}|${paved ? 1 : 0}|${connected ? 1 : 0}|${variant}|${scale}`;
+  if (scale !== roadScale) { roadSprites.clear(); roadScale = scale; }
   let sp = roadSprites.get(key);
   if (!sp) {
-    if (roadSprites.size > 600) roadSprites.clear();
+    if (roadSprites.size > 200) roadSprites.clear();
     const left = P(0, 1)[0] - 2, top = P(0, 0)[1] - 3;
     const w = TW + 4, h = TH + 6;
     const c = document.createElement('canvas');

@@ -206,7 +206,12 @@ export function drawScaffold(ctx, b, top, progress) {
 // Les bâtiments animés (eau, lumière) restent dessinés à chaque image.
 const ANIMATED = new Set(['fountain', 'royalgarden', 'lighthouse']);
 const sprites = new Map();
-const MARGIN_X = 56, ROOM_UP = 190, ROOM_DOWN = 12;
+// Place réservée au-dessus de l'emprise selon la taille (les bâtiments de 3 cases sont les plus hauts).
+const MARGIN_X = 34, ROOM_UP = [0, 100, 130, 175], ROOM_DOWN = 10;
+// Mémoire : on ne garde que les images du zoom et de la saison en cours, et on en crée au plus
+// quelques-unes par image affichée (les autres bâtiments sont dessinés directement en attendant).
+let spriteScale = 0, spriteSeason = -1, createdThisFrame = 0, frameMark = 0;
+const MAX_NEW_PER_FRAME = 24;
 
 const variantOf = (b, d) => (d.look === 'house' ? (b.x + b.y) % 3 : d.look === 'garden' ? (b.x + b.y) % 5 : 0);
 
@@ -221,14 +226,18 @@ export function drawBuildingCached(ctx, b, env, zoom) {
   const d = BUILDINGS[b.type];
   if (ANIMATED.has(d.look)) return drawBuilding(ctx, b, env);
   const scale = Math.max(0.25, Math.min(3, Math.round(zoom * 4) / 4));
+  if (scale !== spriteScale || env.season !== spriteSeason) { sprites.clear(); spriteScale = scale; spriteSeason = env.season; }
+  if (env.time !== frameMark) { frameMark = env.time; createdThisFrame = 0; }
   const key = spriteKey(b, env, d, scale);
   let sp = sprites.get(key);
   if (!sp) {
-    if (sprites.size > 900) sprites.clear();
+    if (createdThisFrame >= MAX_NEW_PER_FRAME) return drawBuilding(ctx, b, env);
+    createdThisFrame++;
+    if (sprites.size > 400) sprites.clear();
     const s = d.size;
     const v = variantOf(b, d);
     const [x0] = P(v, s), [x1] = P(v + s, 0), [, y0] = P(v, 0), [, y1] = P(v + s, s);
-    const left = x0 - MARGIN_X, top = y0 - ROOM_UP;
+    const left = x0 - MARGIN_X, top = y0 - ROOM_UP[s];
     const w = x1 + MARGIN_X - left, h = y1 + ROOM_DOWN - top;
     const c = document.createElement('canvas');
     c.width = Math.ceil(w * scale);
