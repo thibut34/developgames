@@ -4,6 +4,7 @@ import { P, WORLD_W, WORLD_H, worldToTile } from './iso.js';
 import { drawBuilding, drawBuildingCached, drawScaffold, poly } from './draw.js';
 import { tree, mountain } from './sprites.js';
 import { iconImage } from './icons.js';
+import { L, locale } from './i18n.js';
 import * as fx from './fx.js';
 import * as agents from './agents.js';
 import { canPlace, canFill, buildingAt, season, def, tileAt, roadAt, isHouse } from './game.js';
@@ -504,8 +505,9 @@ export function createRenderer(canvas) {
       if (!entries.length) continue;
       const [k, v] = entries[0];
       const [px] = P(b.x + sz / 2, b.y + sz / 2);
-      const name = k === 'gold' ? 'or' : GOODS[k].name.toLowerCase();
-      fx.floatText(px, (b.screenTop ?? P(b.x, b.y)[1]) - 4, `+${v.toFixed(1).replace('.', ',')} ${name}`, '#fff3c4');
+      // La recherche et l'or ne sont pas des marchandises : ils ont leur propre nom.
+      const name = k === 'gold' ? L('or', 'gold') : k === 'research' ? L('recherche', 'research') : GOODS[k]?.name.toLowerCase() ?? k;
+      fx.floatText(px, (b.screenTop ?? P(b.x, b.y)[1]) - 4, `+${v.toLocaleString(locale, { maximumFractionDigits: 1 })} ${name}`, '#fff3c4');
     }
   }
 

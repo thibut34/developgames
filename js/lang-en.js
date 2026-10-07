@@ -159,16 +159,6 @@ export default {
     ['Normal', 'The intended experience.'],
     ['Hard', 'Tight start, costly upkeep, frequent fires and setbacks.'],
   ],
-  scenarios: {
-    colons: { name: 'The first settlers', intro: 'A handful of settlers land on a wild island. Turn it into a proper village before the end of the third year.', goals: ['Reach 150 peasants', 'Build a sawmill', 'Advance to the Village era'] },
-    hiver: { name: 'The long winter', intro: 'Autumn is ending and the stores are almost empty. Hold out until spring without letting your hamlet waste away.', goals: ['Hold out until spring (day 121)', 'Have at least 50 residents in spring'], lose: 'The hamlet has been abandoned.' },
-    incendie: { name: 'The great fire', intro: 'Your town grew too fast, without a single firefighter. Fire has just broken out in several houses: save what you can, then rebuild.', goals: ['Build 4 fire stations', 'Reach 400 residents'] },
-    pain: { name: 'Bread and cloth', intro: 'The artisans want fresh bread and clothes. Set up the wheat and wool chains and keep them happy.', goals: ['Reach 150 artisans', 'Average satisfaction of at least 85%'] },
-    savoir: { name: 'City of knowledge', intro: 'The king wants your town to become a beacon of learning. Build libraries and a university and push science forward.', goals: ['Discover 12 technologies', 'Build a university'] },
-    horizons: { name: 'New horizons', intro: 'Your navigators have spotted distant islands rich in spices and gold. Found colonies and bring back their treasures.', goals: ['Found 2 colonies', 'Have 80 spices in stock', 'Have 30 gold nuggets in stock'] },
-    joyau: { name: 'Jewel of the kingdom', intro: 'The kingdom\'s nobility is looking for a city worthy of its rank. Offer them spices, wine and jewellery.', goals: ['Reach 100 nobles', 'Have 40 jewellery in stock'] },
-    cathedrale: { name: 'The Great Cathedral', intro: 'The ultimate challenge, on hard difficulty: start from nothing and complete the Great Cathedral.', goals: ['Complete the Great Cathedral'] },
-  },
   islands: {
     home: ['Main island', ''],
     spice: ['Spice island', 'Tropical soil for spice plantations.'],

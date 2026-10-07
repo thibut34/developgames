@@ -12,10 +12,8 @@ import { createMinimap } from './minimap.js';
 import { icon } from './icons.js';
 import * as fx from './fx.js';
 import * as audio from './audio.js';
-import { computeMods } from './game.js';
-import { findScenario, DIFFICULTIES } from './scenarios.js';
-import { createTitle, markMission } from './title.js';
-import { createBot } from './autobuild.js';
+import { DIFFICULTIES } from './scenarios.js';
+import { createTitle } from './title.js';
 import { warmThumbs } from './thumbs.js';
 import { ISLAND_KINDS } from './world.js';
 import { L, setLang, locale } from './i18n.js';
@@ -332,24 +330,6 @@ function drainEvents() {
       [{ label: L('Continuer', 'Continue'), cls: 'primary' }]);
       view.renderItems();
       platform.happy();
-    } else if (p.type === 'scenarioWin') {
-      sound('victory');
-      markMission(p.id, p.days);
-      platform.happy();
-      const sc = findScenario(p.id);
-      const next = SCENARIO_ORDER[SCENARIO_ORDER.indexOf(p.id) + 1];
-      view.showModal(`<div class="m-ic">${icon('trophy')}</div><h2>${L('Mission accomplie', 'Mission complete')}</h2>
-        <p class="center">${L(`« ${sc.name} » réussie en ${p.days} jours.`, `“${sc.name}” completed in ${p.days} days.`)}</p>`, [
-        { label: L('Continuer à jouer', 'Keep playing') },
-        { label: 'Menu', onClick: () => actions.toMenu() },
-        ...(next ? [{ label: L('Mission suivante', 'Next mission'), cls: 'primary', onClick: () => startScenario(next) }] : []),
-      ]);
-    } else if (p.type === 'scenarioLose') {
-      sound('bad');
-      view.showModal(`<div class="m-ic">${icon('hourglass')}</div><h2>${L('Mission échouée', 'Mission failed')}</h2><p class="center">${p.reason}</p>`, [
-        { label: 'Menu', onClick: () => actions.toMenu() },
-        { label: L('Réessayer', 'Try again'), cls: 'primary', onClick: () => startScenario(p.id) },
-      ]);
     } else if (p.type === 'victory') {
       sound('victory');
       platform.happy();
@@ -436,12 +416,11 @@ function showHelp(i = 0) {
     : [{ label: L('C\'est parti', 'Let\'s go'), cls: 'primary', onClick: () => { settings.seenHelp = true; saveSettings(); } }]);
 }
 
-// ---------- Écran titre, sauvegardes et missions ----------
+// ---------- Écran titre et sauvegardes ----------
 const SLOT_KEY = (i) => `developgames-slot-${i}`;
-const SCENARIO_ORDER = ['colons', 'hiver', 'incendie', 'pain', 'savoir', 'horizons', 'joyau', 'cathedrale'];
 
 function gameName(game) {
-  return game.scenario ? `Mission${L(' :', ':')} ${findScenario(game.scenario).name}` : L(`Partie libre (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`, `Sandbox (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`);
+  return L(`Partie (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`, `Game (${DIFFICULTIES[game.difficulty ?? 1].name.toLowerCase()})`);
 }
 
 function saveToSlot(i) {
@@ -478,47 +457,10 @@ function loadFrom(key) {
   startGame(ng);
 }
 
-// Prépare une mission : carte, ville de départ construite par le joueur automatique, réglages.
-async function startScenario(id) {
-  const sc = findScenario(id);
-  let ng = createGame(sc.seed, { difficulty: sc.difficulty });
-  if (sc.prebuild) {
-    title.progress(L(`Préparation de la mission « ${sc.name} »…`, `Preparing the mission “${sc.name}”…`));
-    const bot = createBot(sc.seed, { game: ng, ...sc.prebuild });
-    for (let d = 0; d < sc.prebuild.days; d++) {
-      bot.day();
-      if (d % 15 === 0) { title.setProgress(d / sc.prebuild.days); await new Promise((r) => setTimeout(r, 0)); }
-    }
-    ng.notes.length = 0;
-    ng.pending.length = 0;
-  }
-  ng.scenario = id;
-  ng.scenarioStart = ng.day;
-  ng.scenarioEnded = null;
-  ng.log = [];
-  ng.stats = { built: 0, fires: 0, maxPop: 0 };
-  const api = {
-    refresh() { computeMods(ng); rebuild(ng); },
-    igniteHouses(n) {
-      const houses = ng.buildings.filter((b) => b.type === 'house').sort(() => Math.random() - 0.5).slice(0, n);
-      for (const b of houses) b.fire = 1;
-    },
-  };
-  computeMods(ng);
-  sc.after?.(ng, api);
-  rebuild(ng);
-  startGame(ng);
-  view.showModal(`<div class="m-ic">${icon(sc.icon)}</div><h2>${sc.name}</h2><p class="center">${sc.intro}</p>
-    <ul class="parts">${sc.goals.map((q) => `<li><span>${q.text}</span></li>`).join('')}</ul>
-    <p class="center muted small">${sc.days ? L(`Temps imparti : ${sc.days} jours.`, `Time limit: ${sc.days} days.`) : L('Pas de limite de temps.', 'No time limit.')} ${L('Difficulté :', 'Difficulty:')} ${DIFFICULTIES[sc.difficulty].name.toLowerCase()}.</p>`,
-  [{ label: L('Commencer', 'Start'), cls: 'primary' }]);
-}
-
 const title = createTitle({
   hasSave: () => hasAutosave,
   onContinue: () => { const ng = load(); if (ng) startGame(ng); else showTitle('new'); },
   onNew: (difficulty, seed) => startGame(createGame(seed, { difficulty })),
-  onScenario: (id) => startScenario(id),
   slots: slotList,
   onLoad: loadFrom,
   onHelp: () => showHelp(),
@@ -599,7 +541,16 @@ function updateTooltip() {
 }
 
 let last = performance.now(), acc = 0;
+// Une erreur dans une image ne doit jamais arrêter le jeu : on la signale et la boucle continue.
+let frameErrors = 0;
 function frame(now) {
+  requestAnimationFrame(frame);
+  try { tick(now); } catch (e) {
+    if (frameErrors++ < 5) console.error(e);
+  }
+}
+
+function tick(now) {
   const dt = Math.min(now - last, 100) / 1000;
   last = now;
   const speed = modalPaused || adPlaying || title.open ? 0 : ui.speed;
@@ -618,7 +569,6 @@ function frame(now) {
   renderer.draw(g, cam, { ...ui, speed }, dt);
   if (ui.minimap) minimap.draw();
   updateTooltip();
-  requestAnimationFrame(frame);
 }
 
 // Outils de test dans la console : DG.give('gold', 500), DG.days(30)

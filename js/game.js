@@ -5,7 +5,7 @@ import {
   RENOWN, RENOWN_STEP, FILL_COST, TOOLS,
 } from './config.js';
 import { generateMap, computeIslands } from './world.js';
-import { DIFFICULTIES, findScenario } from './scenarios.js';
+import { DIFFICULTIES } from './scenarios.js';
 import { L } from './i18n.js';
 import { store } from './platform.js';
 
@@ -14,11 +14,11 @@ const SAVE_KEY = 'developgames-save-v5';
 export const def = (b) => BUILDINGS[b.type];
 const idx = (x, y) => y * MAP + x;
 export const inMap = (x, y) => x >= 0 && y >= 0 && x < MAP && y < MAP;
-export const resName = (k) => (k === 'gold' ? L('or', 'gold') : GOODS[k].name.toLowerCase());
+export const resName = (k) => (k === 'gold' ? L('or', 'gold') : k === 'research' ? L('recherche', 'research') : GOODS[k].name.toLowerCase());
 
 // ---------- Création ----------
 
-// opts : { difficulty: 0-2, scenario: id de mission }
+// opts : { difficulty: 0-2 }
 export function createGame(seed = Math.floor(Math.random() * 1e9), opts = {}) {
   const difficulty = opts.difficulty ?? 1;
   const D = DIFFICULTIES[difficulty];
@@ -32,7 +32,6 @@ export function createGame(seed = Math.floor(Math.random() * 1e9), opts = {}) {
     goods,
     gold: Math.round(START.gold * D.start),
     difficulty,
-    scenario: opts.scenario || null,
     day: 0,
     era: 0,
     tax: 1,
@@ -520,10 +519,9 @@ export function bucketBrigade(g, b) {
 // Additionne les effets de toutes les technologies découvertes.
 export function computeMods(g) {
   const D = DIFFICULTIES[g.difficulty ?? 1];
-  const sc = g.scenario ? findScenario(g.scenario) : null;
   const m = {
     prod: {}, range: {}, fireHouse: 1, storage: 0, upkeep: D.upkeep, tax: D.tax, sat: 0, research: 1, wonderTime: 1,
-    fire: D.fire * (sc?.mods?.fire || 1), events: D.events,
+    fire: D.fire, events: D.events,
   };
   for (const id of g.tech) {
     const e = TECHS.find((t) => t.id === id)?.effect || {};
@@ -641,35 +639,6 @@ export function questProgress(g) {
   return { q, cur: Math.min(cur, max), max };
 }
 
-// ---------- Missions de la campagne ----------
-
-export function scenarioGoals(g) {
-  const sc = findScenario(g.scenario);
-  if (!sc) return null;
-  const h = questHelpers(g);
-  const goals = sc.goals.map((q) => {
-    const [cur, max] = q.check(g, h);
-    return { text: q.text, cur: Math.min(cur, max), max, done: cur >= max };
-  });
-  const left = sc.days ? sc.days - (g.day - (g.scenarioStart || 0)) : null;
-  return { sc, goals, left };
-}
-
-function checkScenario(g) {
-  if (!g.scenario || g.scenarioEnded) return;
-  const s = scenarioGoals(g);
-  if (s.goals.every((q) => q.done)) {
-    g.scenarioEnded = 'win';
-    g.pending.push({ type: 'scenarioWin', id: g.scenario, days: g.day - (g.scenarioStart || 0) });
-    return;
-  }
-  const reason = s.left !== null && s.left <= 0 ? L('Le temps imparti est écoulé.', 'Time is up.') : s.sc.lose?.(g, questHelpers(g));
-  if (reason) {
-    g.scenarioEnded = 'lose';
-    g.pending.push({ type: 'scenarioLose', id: g.scenario, reason });
-  }
-}
-
 // Palier de renommée n (1, 2, 3…) : population à atteindre, titre et récompense.
 export function renownTier(n) {
   if (n <= RENOWN.length) return RENOWN[n - 1];
@@ -696,7 +665,6 @@ function checkRenown(g) {
 }
 
 export function checkQuests(g) {
-  if (g.scenario) { checkScenario(g); return; }
   checkRenown(g);
   for (;;) {
     const p = questProgress(g);
@@ -1034,7 +1002,7 @@ export function serialize(g) {
     buildings: g.buildings.map(({ id, type, x, y, level, res, lock, paused, fire, build }) => ({ id, type, x, y, level, res, lock, paused, fire, build })),
     goods: g.goods, gold: g.gold, day: g.day, era: g.era, tax: g.tax, quest: g.quest,
     log: g.log.slice(0, 50), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats, alerts: g.alerts,
-    tech: g.tech, rp: g.rp, difficulty: g.difficulty, scenario: g.scenario, scenarioStart: g.scenarioStart, scenarioEnded: g.scenarioEnded,
+    tech: g.tech, rp: g.rp, difficulty: g.difficulty,
     filled: g.filled, renown: g.renown,
   });
 }

@@ -1,23 +1,12 @@
-// Écran titre : continuer, nouvelle partie (difficulté, carte), campagne, chargement, aide.
-import { DIFFICULTIES, SCENARIOS } from './scenarios.js';
+// Écran titre : continuer, nouvelle partie (difficulté, carte), chargement, aide.
+import { DIFFICULTIES } from './scenarios.js';
 import { ERAS } from './config.js';
 import { icon } from './icons.js';
 import { L, lang, locale, setLang } from './i18n.js';
-import { store } from './platform.js';
 
-const CAMPAIGN_KEY = 'developgames-campaign';
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-export function campaignProgress() {
-  try { return JSON.parse(store.getItem(CAMPAIGN_KEY)) || {}; } catch { return {}; }
-}
-export function markMission(id, days) {
-  const p = campaignProgress();
-  if (!p[id] || days < p[id].days) p[id] = { days };
-  try { store.setItem(CAMPAIGN_KEY, JSON.stringify(p)); } catch { /* rien */ }
-}
-
-// app : { hasSave(), onContinue(), onNew(difficulté, graine), onScenario(id), slots(), onLoad(clé), onHelp() }
+// app : { hasSave(), onContinue(), onNew(difficulté, graine), slots(), onLoad(clé), onHelp() }
 export function createTitle(app) {
   const el = document.getElementById('title');
   let page = 'menu';
@@ -30,7 +19,6 @@ export function createTitle(app) {
       box.innerHTML = `<div class="t-menu">
         ${app.hasSave() ? `<button class="primary" data-go="continue">${icon('play')}${L('Continuer', 'Continue')}</button>` : ''}
         <button data-go="new">${icon('map')}${L('Nouvelle partie', 'New game')}</button>
-        <button data-go="campaign">${icon('flag')}${L('Campagne', 'Campaign')}</button>
         <button data-go="load">${icon('folder-open')}${L('Charger', 'Load')}</button>
         <button data-go="help">${icon('circle-help')}${L('Comment jouer', 'How to play')}</button>
       </div>
@@ -40,18 +28,6 @@ export function createTitle(app) {
         <div class="t-diffs">${DIFFICULTIES.map((d, i) => `<button class="t-diff ${i === difficulty ? 'active' : ''}" data-diff="${i}"><b>${d.name}</b><span>${d.desc}</span></button>`).join('')}</div>
         <label class="t-seed">${L('Numéro de carte', 'Map number')} <input id="t-seed" inputmode="numeric" placeholder="${L('au hasard', 'random')}"></label>
         <button class="primary wide" data-go="start">${icon('play')}${L('Fonder la cité', 'Found the city')}</button>`;
-    } else if (page === 'campaign') {
-      const prog = campaignProgress();
-      box.innerHTML = `${back()}<h2>${L('Campagne', 'Campaign')}</h2><p class="muted">${L('Huit missions de difficulté croissante, chacune avec ses objectifs.', 'Eight missions of increasing difficulty, each with its own goals.')}</p>
-        <div class="t-missions">${SCENARIOS.map((s, i) => {
-          const done = prog[s.id];
-          return `<button class="t-mission ${done ? 'done' : ''}" data-mission="${s.id}">
-            <span class="t-num">${done ? icon('check') : i + 1}</span>
-            <span class="t-mi">${icon(s.icon)}</span>
-            <span class="t-mt"><b>${esc(s.name)}</b><span>${esc(s.intro)}</span>
-            <em>${s.days ? L(`${s.days} jours`, `${s.days} days`) : L('Sans limite de temps', 'No time limit')} · ${DIFFICULTIES[s.difficulty].name}${done ? L(` · réussie en ${done.days} jours`, ` · completed in ${done.days} days`) : ''}</em></span>
-          </button>`;
-        }).join('')}</div>`;
     } else if (page === 'load') {
       const slots = app.slots();
       box.innerHTML = `${back()}<h2>${L('Charger une partie', 'Load a game')}</h2><div class="t-slots">${slots.map((s) => `
@@ -62,7 +38,6 @@ export function createTitle(app) {
     }
     for (const b of box.querySelectorAll('[data-go]')) b.onclick = () => go(b.dataset.go);
     for (const b of box.querySelectorAll('[data-diff]')) b.onclick = () => { difficulty = Number(b.dataset.diff); render(); };
-    for (const b of box.querySelectorAll('[data-mission]')) b.onclick = () => app.onScenario(b.dataset.mission);
     for (const b of box.querySelectorAll('[data-slot]')) b.onclick = () => app.onLoad(b.dataset.slot);
     for (const b of box.querySelectorAll('[data-lang]')) b.onclick = () => { if (b.dataset.lang !== lang) setLang(b.dataset.lang); };
   }

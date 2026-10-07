@@ -65,7 +65,7 @@ Found a hamlet on a wild island and grow it into a thriving city.
 - Fight fires and epidemics, repel bandits and survive harsh winters.
 - Build harbours and found colonies on spice and gold islands.
 - Advance through five eras and complete the Great Cathedral.
-- Free play with three difficulty levels and an 8-mission campaign.
+- Three difficulty levels, one long game: 10+ hours from a hamlet to the Royal Palace, then endless renown.
 
 **Controls** :
 - Mouse: click to build or inspect, drag to move the camera or lay roads, mouse wheel to zoom.

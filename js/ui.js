@@ -6,7 +6,7 @@ import {
 import {
   storage, canAfford, amount, eraLocked, def, isWorking, houseNeeds, upgradeStatus, eraStatus,
   questProgress, buyPrice, sellPrice, tradeHasPost, dateText, season, capOf, isHouse, population,
-  lockReason, techStatus, scenarioGoals, renownStatus,
+  lockReason, techStatus, renownStatus,
 } from './game.js';
 import { DIFFICULTIES } from './scenarios.js';
 import { icon } from './icons.js';
@@ -19,7 +19,9 @@ const fmt1 = (n) => (Math.round(n * 10) / 10).toLocaleString(locale);
 const signed = (n) => (n >= 0 ? '+' : '−') + fmt1(Math.abs(n));
 const pct = (v) => `${Math.round(v * 100)}${EN ? '' : ' '}%`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const resInfo = (k) => (k === 'gold' ? GOLD : GOODS[k]);
+// L'or et les points de recherche ne sont pas des marchandises mais s'affichent comme elles.
+const RESEARCH = { name: L('Recherche', 'Research'), icon: 'flask-conical' };
+const resInfo = (k) => (k === 'gold' ? GOLD : k === 'research' ? RESEARCH : GOODS[k]);
 
 // Coût avec icônes ; les montants manquants sont en rouge.
 export function costHtml(g, cost = {}, mult = 1) {
@@ -111,13 +113,6 @@ export function createUI(app) {
 
   function refreshQuest() {
     const box = $('#quest');
-    const s = scenarioGoals(app.g);
-    if (s) {
-      box.innerHTML = `<div class="q-title">${icon(s.sc.icon)}<span>${esc(s.sc.name)}</span></div>
-        <ul class="goals">${s.goals.map((q) => `<li class="${q.done ? 'done' : ''}">${icon(q.done ? 'check' : 'target')}<span>${esc(q.text)}</span><b>${fmt(q.cur)}/${fmt(q.max)}</b></li>`).join('')}</ul>
-        ${s.left !== null ? `<div class="q-sub"><span>${icon('hourglass')} ${Math.max(0, s.left)} ${L('jours restants', 'days left')}</span></div>` : ''}`;
-      return;
-    }
     const p = questProgress(app.g);
     if (!p) {
       // Objectifs terminés : la renommée prend le relais, sans fin.

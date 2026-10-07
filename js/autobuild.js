@@ -1,6 +1,6 @@
 // Joueur automatique : il construit, gère ses chaînes de production, garde assez d'ouvriers
 // de chaque classe, commerce et change d'ère tout seul. Sert à tester l'équilibrage
-// (tests/simulation.html) et à préparer les villes de départ des missions de la campagne.
+// (tests/simulation.html).
 import * as m from './game.js';
 import { MAP, T, BUILDINGS, CLASSES, WORKFORCE, GOOD_KEYS, TECHS } from './config.js';
 
