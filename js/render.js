@@ -1,5 +1,5 @@
 // Rendu de la carte isométrique : terrain, routes, calques, objets triés par profondeur, effets.
-import { MAP, T, TW, TH, BUILDINGS, GOODS, CLEAR } from './config.js';
+import { MAP, T, TW, TH, BUILDINGS, GOODS, CLEAR, WEATHER } from './config.js';
 import { P, WORLD_W, WORLD_H, worldToTile } from './iso.js';
 import { drawBuilding, drawBuildingCached, drawScaffold, poly } from './draw.js';
 import { tree, mountain } from './sprites.js';
@@ -122,6 +122,44 @@ function drawTerrain(ctx, g, s, X0, Y0, X1, Y1) {
       }
     }
   }
+}
+
+// Entonnoir de tornade : anneaux gris qui tournent, plus larges en haut, et débris.
+let tornadoPos = null;
+function drawTornado(ctx, i, j, time) {
+  const [x, y] = P(i, j);
+  const t = time / 1000;
+  const H = 230;
+  ctx.save();
+  // Ombre au sol et nuage de poussière
+  ctx.fillStyle = 'rgba(30,30,35,0.35)';
+  ctx.beginPath(); ctx.ellipse(x, y, 60, 24, 0, 0, Math.PI * 2); ctx.fill();
+  // Corps de l'entonnoir : cône sombre qui ondule
+  const sway = (h) => Math.sin(t * 2.2 + h * 0.02) * (6 + h * 0.08);
+  const grad = ctx.createLinearGradient(0, y, 0, y - H);
+  grad.addColorStop(0, 'rgba(62,58,56,0.95)');
+  grad.addColorStop(1, 'rgba(110,114,125,0.75)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  for (let h = 0; h <= H; h += 10) ctx.lineTo(x + sway(h) - (8 + h * 0.32), y - h);
+  for (let h = H; h >= 0; h -= 10) ctx.lineTo(x + sway(h) + (8 + h * 0.32), y - h);
+  ctx.closePath(); ctx.fill();
+  // Anneaux de vent qui tournent
+  ctx.lineWidth = 3;
+  for (let k = 0; k < 14; k++) {
+    const h = 8 + k * 16, r = 10 + h * 0.32;
+    ctx.strokeStyle = `rgba(215,215,220,${0.5 - k * 0.025})`;
+    ctx.beginPath();
+    ctx.ellipse(x + sway(h), y - h, r, r * 0.3, 0, t * 7 + k, t * 7 + k + Math.PI * 1.2);
+    ctx.stroke();
+  }
+  // Débris emportés
+  ctx.fillStyle = 'rgba(85,62,40,0.9)';
+  for (let k = 0; k < 16; k++) {
+    const a = t * 4 + k * 0.9, h = 15 + ((k * 37 + t * 60) % 180), r = 14 + h * 0.34;
+    ctx.fillRect(x + sway(h) + Math.cos(a) * r, y - h + Math.sin(a) * r * 0.3, 4, 3);
+  }
+  ctx.restore();
 }
 
 // Routes : chaque forme (raccords, pavée ou non, reliée ou non) est dessinée une fois dans une image.
@@ -274,7 +312,9 @@ export function createRenderer(canvas) {
     const key = `${g.seed}-${g.terrainVersion}-${s}`;
     if (key !== terrainKey) { chunks.clear(); low = null; terrainKey = key; }
 
-    fx.update(dt, s, w, h);
+    const wx = g.weather;
+    const storm = wx?.phase === 'on' && wx.type === 'storm';
+    fx.update(dt, s, w, h, storm);
     agents.update(g, dt, ui.speed);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -437,6 +477,28 @@ export function createRenderer(canvas) {
     }
     agents.collect(list, inView);
 
+    // Tornade : trajectoire prévue (pointillés) et entonnoir qui avance en douceur.
+    if (wx?.type === 'tornado') {
+      const speed = WEATHER.tornado.speed;
+      const steps = wx.phase === 'warn' ? wx.steps : wx.steps;
+      const [ax, ay] = P(wx.x, wx.y), [bx, by] = P(wx.x + wx.dx * speed * steps, wx.y + wx.dy * speed * steps);
+      ctx.save();
+      ctx.setLineDash([10, 8]);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = wx.phase === 'warn' ? 'rgba(255,210,90,0.95)' : 'rgba(255,90,70,0.9)';
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.restore();
+      if (wx.phase === 'on') {
+        if (!tornadoPos) tornadoPos = { x: wx.x - wx.dx * speed, y: wx.y - wx.dy * speed };
+        const k = Math.min(1, dt * 0.9);
+        tornadoPos.x += (wx.x - tornadoPos.x) * k;
+        tornadoPos.y += (wx.y - tornadoPos.y) * k;
+        const tp = tornadoPos;
+        list.push({ depth: tp.x + tp.y + 1.5, draw: () => drawTornado(ctx, tp.x, tp.y, time) });
+        if (ui.speed > 0) { const [px, py] = P(tp.x, tp.y); for (let i = 0; i < 2; i++) fx.dust(px + (Math.random() - 0.5) * 40, py); }
+      } else tornadoPos = null;
+    } else tornadoPos = null;
+
     // Fantôme du bâtiment à placer
     if (placing && ui.hover) {
       const { x, y } = ui.hover;
@@ -492,6 +554,11 @@ export function createRenderer(canvas) {
     const tint = ['rgba(255,250,230,0.03)', 'rgba(255,230,150,0.05)', 'rgba(255,150,60,0.06)', 'rgba(190,215,255,0.09)'][s];
     ctx.fillStyle = tint;
     ctx.fillRect(0, 0, w, h);
+    // Ciel assombri pendant la tempête et la tornade, chaleur orangée pendant la canicule.
+    if (wx?.phase === 'on') {
+      ctx.fillStyle = wx.type === 'heat' ? 'rgba(255,140,40,0.10)' : wx.type === 'storm' ? 'rgba(15,25,45,0.28)' : 'rgba(30,30,40,0.14)';
+      ctx.fillRect(0, 0, w, h);
+    }
     fx.drawWeather(ctx);
   }
 

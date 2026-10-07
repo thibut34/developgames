@@ -69,6 +69,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   cursor: pointer;
   transition: background 0.2s;
 }
+.tb-item.weather { color: #ffd257; border: 1px solid rgba(255, 210, 87, 0.45); border-radius: 8px; gap: 5px; }
+.tb-item.weather.on { color: #fff; background: #b8443a; border-color: #b8443a; animation: glow 1.2s infinite alternate; }
 .tb-item:hover { background: rgba(255, 255, 255, 0.05); }
 .tb-item .ic-wrap { display: flex; color: var(--muted); }
 .tb-item .ic-wrap.gold { color: var(--accent); }
@@ -597,3 +599,9 @@ body.on-title #minimap, body.on-title #panel, body.on-title #toolchip, body.on-t
   #toolchip { bottom: calc(var(--bottom-h) + 10px + env(safe-area-inset-bottom)); }
   #toasts { bottom: calc(var(--bottom-h) + 56px + env(safe-area-inset-bottom)); }
 }
+
+/* Contrats maritimes (panneau Commerce) */
+.contract { padding: 10px 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); display: flex; flex-direction: column; gap: 6px; }
+.contract .ct-top { display: flex; justify-content: space-between; align-items: baseline; }
+.contract .ct-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.contract button { align-self: flex-end; }

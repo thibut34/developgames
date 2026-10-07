@@ -85,6 +85,48 @@ function updateShips(g, dt, speed) {
   }
 }
 
+// ---------- Navire marchand : arrive du large, reste à quai, repart ----------
+let merchant = null;     // { path, t, dir, leaving }
+
+// Chemin du large (bord de la carte) jusqu'au port.
+function seaPath(g, port) {
+  const isWater = (x, y) => x >= 0 && y >= 0 && x < MAP && y < MAP && g.tiles[y * MAP + x] === T.WATER;
+  const s = BUILDINGS[port.type].size;
+  const prev = new Int32Array(MAP * MAP).fill(-2);
+  const queue = [];
+  for (let y = port.y - 1; y <= port.y + s; y++) for (let x = port.x - 1; x <= port.x + s; x++) if (isWater(x, y)) { prev[y * MAP + x] = -1; queue.push(y * MAP + x); }
+  for (let q = 0; q < queue.length; q++) {
+    const i = queue[q];
+    const x = i % MAP, y = Math.floor(i / MAP);
+    if (x < 2 || y < 2 || x > MAP - 3 || y > MAP - 3) {
+      const path = [];
+      for (let k = i; k !== -1; k = prev[k]) path.push([k % MAP, Math.floor(k / MAP)]);
+      return path;      // du large vers le port
+    }
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (!isWater(nx, ny) || prev[ny * MAP + nx] !== -2) continue;
+      prev[ny * MAP + nx] = i;
+      queue.push(ny * MAP + nx);
+    }
+  }
+  return null;
+}
+
+function updateMerchant(g, dt, speed) {
+  if (g.merchant && !merchant) {
+    const port = g.buildings.find((b) => b.type === 'port' && !b.build && g.isl.id[b.y * MAP + b.x] === 0);
+    const path = port && seaPath(g, port);
+    if (path && path.length > 1) merchant = { path, t: 0, dir: 1, big: true };
+  }
+  if (!merchant || !speed) return;
+  const end = merchant.path.length - 1;
+  if (!g.merchant && merchant.dir === 1) merchant.dir = -1;      // le navire repart
+  merchant.t += merchant.dir * dt * Math.min(speed, 3) * 2.2;
+  if (merchant.t >= end) merchant.t = end;
+  if (merchant.t <= 0 && merchant.dir === -1) merchant = null;
+}
+
 function drawShip(ctx, s) {
   const i = Math.floor(s.t), f = s.t - i;
   const a = s.path[i], b = s.path[Math.min(i + 1, s.path.length - 1)];
@@ -97,7 +139,7 @@ function drawShip(ctx, s) {
   ctx.beginPath(); ctx.ellipse(px - flip * 10, py + 2, 8, 2, 0, 0, Math.PI * 2); ctx.fill();
   ctx.save();
   ctx.translate(px, py + bob);
-  ctx.scale(flip, 1);
+  ctx.scale(flip * (s.big ? 1.45 : 1), s.big ? 1.45 : 1);
   ctx.fillStyle = '#6b4526';
   ctx.beginPath(); ctx.moveTo(-14, -6); ctx.lineTo(14, -6); ctx.lineTo(9, 1); ctx.lineTo(-11, 1); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#8a5a33';
@@ -108,14 +150,15 @@ function drawShip(ctx, s) {
   ctx.fillStyle = '#f3ede0';
   ctx.beginPath(); ctx.moveTo(1, -29); ctx.quadraticCurveTo(12, -19, 1, -9); ctx.closePath(); ctx.fill();
   ctx.beginPath(); ctx.moveTo(-1, -26); ctx.quadraticCurveTo(-9, -18, -1, -10); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#c0392b';
-  ctx.fillRect(0, -32, 6, 3);
+  ctx.fillStyle = s.big ? '#2f5d8a' : '#c0392b';
+  ctx.fillRect(0, -32, s.big ? 9 : 6, s.big ? 5 : 3);
   ctx.restore();
   void qy;
 }
 
 export function update(g, dt, speed) {
   updateShips(g, dt, speed);
+  updateMerchant(g, dt, speed);
   const roads = connectedRoads(g);
   const pop = g.cls.reduce((a, b) => a + b, 0);
   const target = roads.length < 2 ? 0 : Math.min(90, Math.floor(pop / 4) + 2, roads.length * 2);
@@ -160,7 +203,7 @@ export function update(g, dt, speed) {
 
 // Ajoute les habitants visibles à la liste d'objets à trier par profondeur.
 export function collect(list, inView) {
-  for (const s of ships) {
+  for (const s of merchant ? [...ships, merchant] : ships) {
     const [x, y] = s.path[Math.floor(s.t)];
     if (!inView(x, y)) continue;
     list.push({ depth: x + y + 1.2, draw: (ctx) => drawShip(ctx, s) });

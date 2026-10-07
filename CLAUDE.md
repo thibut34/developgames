@@ -8,7 +8,7 @@ Jeu de développement de village/cité dans le navigateur. Projet indépendant d
 - Après un changement d'équilibrage ou du moteur (`js/game.js`), lancer `tests/simulation.html` :
   le joueur robot doit toujours aller jusqu'au Palais royal (fin de la partie guidée) sans erreur, sur les 3 cartes.
   Repères actuels : Grande Cathédrale vers le jour 1 300-1 500, Palais royal vers le jour 1 700-2 500.
-- Console du jeu : `DG.give('gold', 500)`, `DG.days(30)` pour tester vite.
+- Console du jeu : `DG.give('gold', 500)`, `DG.days(30)`, `DG.weather('tornado' | 'storm' | 'heat')` pour tester vite.
 - Le joueur automatique (`js/autobuild.js`) sert aux tests d'équilibrage.
 - Pas de campagne ni de missions (retirées à la demande de l'utilisateur) : une seule partie libre, longue et riche.
   `js/scenarios.js` ne contient plus que les niveaux de difficulté.

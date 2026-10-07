@@ -108,6 +108,7 @@ export default {
     blast: ['Blast furnace', 'Charcoal burners, smelters and forges +25%.'],
     cadastre: ['Land registry', 'Taxes +10%.'],
     hygiene: ['Hygiene', 'Satisfaction of all residents +5%.'],
+    weather: ['Meteorology', 'Warnings two days earlier, tornado damage −50% and shorter storms.'],
     navigation: ['Navigation', 'Unlocks the harbour and colonising nearby islands.'],
     printing: ['Printing press', 'Research +30% and school range +2.'],
     surgery: ['Surgery', 'Unlocks the hospital.'],

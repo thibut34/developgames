@@ -2,7 +2,7 @@
 import {
   MAP, T, TERRAIN, CLEAR, GOODS, GOOD_KEYS, START, BASE_STORAGE, STORAGE_PER_ERA, WORKFORCE, ROAD_COST,
   CLASSES, TAXES, ERAS, BUILDINGS, WORK_PRIORITY, QUESTS, DAYS_PER_SEASON, SEASONS, FIRE, TECHS,
-  RENOWN, RENOWN_STEP, FILL_COST, TOOLS,
+  RENOWN, RENOWN_STEP, FILL_COST, TOOLS, WEATHER,
 } from './config.js';
 import { generateMap, computeIslands } from './world.js';
 import { DIFFICULTIES } from './scenarios.js';
@@ -179,7 +179,7 @@ function countClasses(g) {
 function computeConnectivity(g) {
   const th = g.buildings.find((b) => b.type === 'townhall');
   spreadRoads(g, [th]);
-  const link = g.buildings.some((b) => isHomePort(g, b) && b.connected && !b.paused && !(b.fire > 0) && !b.build);
+  const link = !stormOn(g) && g.buildings.some((b) => isHomePort(g, b) && b.connected && !b.paused && !(b.fire > 0) && !b.build);
   g.seaLink = link;
   if (!link) return;
   const colonyPorts = g.buildings.filter((b) => b.type === 'port' && islandOf(g, b) > 0 && !b.build);
@@ -520,14 +520,14 @@ export function bucketBrigade(g, b) {
 export function computeMods(g) {
   const D = DIFFICULTIES[g.difficulty ?? 1];
   const m = {
-    prod: {}, range: {}, fireHouse: 1, storage: 0, upkeep: D.upkeep, tax: D.tax, sat: 0, research: 1, wonderTime: 1,
+    prod: {}, range: {}, fireHouse: 1, storage: 0, upkeep: D.upkeep, tax: D.tax, sat: 0, research: 1, wonderTime: 1, weather: 1,
     fire: D.fire, events: D.events,
   };
   for (const id of g.tech) {
     const e = TECHS.find((t) => t.id === id)?.effect || {};
     for (const [k, v] of Object.entries(e.prod || {})) m.prod[k] = (m.prod[k] || 1) * v;
     for (const [k, v] of Object.entries(e.range || {})) m.range[k] = (m.range[k] || 0) + v;
-    for (const k of ['fireHouse', 'upkeep', 'tax', 'research', 'wonderTime']) if (e[k]) m[k] *= e[k];
+    for (const k of ['fireHouse', 'upkeep', 'tax', 'research', 'wonderTime', 'weather']) if (e[k]) m[k] *= e[k];
     if (e.storage) m.storage += e.storage;
     if (e.sat) m.sat += e.sat;
   }
@@ -716,7 +716,7 @@ function updateFires(g) {
   // Nouveaux départs de feu
   for (const b of g.buildings) {
     if (b.fire > 0 || b.build || !b.cover || b.cover.fire) continue;
-    const risk = fireRisk(g, b);
+    const risk = fireRisk(g, b) * (weatherOn(g, 'heat') ? WEATHER.heat.fire : 1);
     if (risk <= 0) continue;
     if (Math.random() < FIRE.baseRisk * g.mods.fire * risk * (b.cover.well ? FIRE.wellFactor : 1)) ignite(g, b, false);
   }
@@ -818,6 +818,197 @@ function rollEvent(g) {
   }
 }
 
+// ---------- Catastrophes naturelles ----------
+// g.weather : { type, phase: 'warn' | 'on', at (jour d'arrivée), end, et pour la tornade x, y, dx, dy, steps }.
+
+export const weatherOn = (g, type) => g.weather?.phase === 'on' && g.weather.type === type;
+const stormOn = (g) => weatherOn(g, 'storm');
+
+export const WEATHER_NAMES = {
+  tornado: () => L('Tornade', 'Tornado'),
+  storm: () => L('Tempête', 'Storm'),
+  heat: () => L('Canicule', 'Heatwave'),
+};
+
+// Trajectoire d'une tornade : elle traverse l'île principale en ligne droite, avec un décalage aléatoire.
+function tornadoPath() {
+  const c = MAP / 2;
+  const a = Math.random() * Math.PI * 2;
+  const dx = Math.cos(a), dy = Math.sin(a);
+  const off = (Math.random() - 0.5) * 24;
+  const R = 36;
+  return { x: c - dx * R - dy * off, y: c - dy * R + dx * off, dx, dy, steps: Math.ceil((2 * R) / WEATHER.tornado.speed) };
+}
+
+function startWeather(g, type) {
+  const W = WEATHER[type];
+  const warn = W.warn + (g.tech.includes('weather') ? 2 : 0);
+  const w = { type, phase: 'warn', at: g.day + warn };
+  if (type === 'tornado') Object.assign(w, tornadoPath());
+  else {
+    const [a, b] = W.days;
+    const len = Math.round(a + Math.random() * (b - a)) * (type === 'storm' ? (g.mods.weather < 1 ? 0.6 : 1) : 1);
+    w.end = w.at + Math.max(3, Math.round(len));
+  }
+  g.weather = w;
+  const msg = {
+    tornado: L(`Une tornade se forme au large : elle frappera l'île dans ${warn} jours. Sa trajectoire est tracée sur la carte.`, `A tornado is forming offshore: it will hit the island in ${warn} days. Its path is drawn on the map.`),
+    storm: L(`Une tempête approche : dans ${warn} jours, plus de pêche ni de liaison avec les colonies.`, `A storm is coming: in ${warn} days, no fishing and no link with the colonies.`),
+    heat: L(`Une canicule s'annonce : risque d'incendie triplé et récoltes réduites. Vérifiez vos postes d'incendie.`, `A heatwave is coming: fire risk tripled and smaller harvests. Check your fire stations.`),
+  }[type];
+  notify(g, msg, 'warn', 'alarm');
+}
+
+// Bâtiments détruits sur le passage de la tornade entre deux positions.
+function tornadoDamage(g, x0, y0, x1, y1) {
+  const W = WEATHER.tornado;
+  const hit = new Set();
+  const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0));
+  for (let i = 0; i <= n; i++) {
+    const px = x0 + ((x1 - x0) * i) / n, py = y0 + ((y1 - y0) * i) / n;
+    for (const b of g.buildings) {
+      const s = def(b).size;
+      const cx = Math.max(b.x, Math.min(px, b.x + s)), cy = Math.max(b.y, Math.min(py, b.y + s));
+      if (Math.hypot(cx - px, cy - py) <= W.radius) hit.add(b);
+    }
+  }
+  let destroyed = 0, lost = 0;
+  for (const b of hit) {
+    if (b.type === 'townhall' || b.type === 'ruins' || b.type === 'wonder' || def(b).monument) continue;
+    if (Math.random() >= W.destroy * g.mods.weather) {
+      if (isHouse(b)) { const l = Math.floor((b.res || 0) * 0.3); b.res -= l; lost += l; }
+      continue;
+    }
+    if (isHouse(b)) lost += Math.floor(b.res || 0);
+    g.buildings = g.buildings.filter((o) => o !== b);
+    const s = def(b).size;
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) g.buildings.push({ id: g.nextId++, type: 'ruins', x: b.x + dx, y: b.y + dy, level: 1 });
+    destroyed++;
+  }
+  if (destroyed || lost) {
+    notify(g, L(`La tornade a détruit ${destroyed} bâtiment(s)${lost ? ` et fait fuir ${lost} habitants` : ''}.`, `The tornado destroyed ${destroyed} building(s)${lost ? ` and ${lost} residents fled` : ''}.`), 'danger', 'bad');
+    g.stats.disasters = (g.stats.disasters || 0) + 1;
+  }
+}
+
+// ---------- Navires marchands et contrats ----------
+// Avec un port sur l'île principale (et la Navigation), un navire marchand accoste de temps en temps
+// et propose un contrat : livrer une quantité d'une marchandise avant une date, contre une belle récompense.
+// Chaque contrat honoré améliore la réputation du port : les contrats suivants rapportent davantage.
+
+const MERCHANT_ORIGINS = [
+  ['Venise', 'Venice'], ['Gênes', 'Genoa'], ['Bruges', 'Bruges'], ['Lisbonne', 'Lisbon'],
+  ['Hambourg', 'Hamburg'], ['Séville', 'Seville'], ['Londres', 'London'], ['Amsterdam', 'Amsterdam'],
+];
+export const SHIP = { firstDelay: 20, every: [45, 75], dock: 8, days: [40, 70], maxContracts: 3 };
+
+const homePortReady = (g) => g.buildings.some((b) => isHomePort(g, b) && isWorking(b) && b.connected);
+
+function makeContract(g) {
+  // Une marchandise que la cité sait déjà produire ou possède.
+  const known = GOOD_KEYS.filter((k) => (g.flow.prod[k] || 0) > 0.3 || g.goods[k] >= 20);
+  if (!known.length) return null;
+  // Les marchandises élaborées (plus chères) sont plus souvent demandées que le bois ou la pierre.
+  let r = Math.random() * known.reduce((sum, x) => sum + GOODS[x].price, 0);
+  let k = known[0];
+  for (const x of known) { r -= GOODS[x].price; if (r <= 0) { k = x; break; } }
+  const rep = g.shipRep || 0;
+  // Quantité : de l'ordre de 25 à 60 jours de production pour une marchandise courante, moins pour les produits chers.
+  const n = Math.max(10, Math.round(((30 + g.era * 25 + Math.random() * 40) * Math.min(1, 3 / GOODS[k].price)) / 10) * 10);
+  const [a, b] = SHIP.days;
+  const days = Math.round(a + Math.random() * (b - a));
+  // Récompense : bien plus que le prix de vente au marché, et davantage avec la réputation du port.
+  const gold = Math.round((n * GOODS[k].price * (3 + Math.min(rep, 12) * 0.15) + 50 * (g.era + 1)) / 10) * 10;
+  // Parfois, un présent rare en plus de l'or
+  const bonus = Math.random() < 0.35 ? { [['spices', 'jewels', 'tools', 'wine'][Math.floor(Math.random() * 4)]]: 5 + g.era * 3 } : null;
+  const origin = MERCHANT_ORIGINS[Math.floor(Math.random() * MERCHANT_ORIGINS.length)];
+  return { id: g.nextId++, k, n, days, reward: { gold, ...(bonus || {}) }, origin: L(origin[0], origin[1]) };
+}
+
+function updateMerchants(g) {
+  g.contracts ??= [];
+  // Contrats arrivés à échéance
+  for (const c of [...g.contracts]) {
+    if (g.day > c.until) {
+      g.contracts = g.contracts.filter((o) => o !== c);
+      g.shipRep = Math.max(0, (g.shipRep || 0) - 1);
+      notify(g, L(`Contrat expiré : ${c.n} ${resName(c.k)} pour ${c.origin}. La réputation du port baisse.`, `Contract expired: ${c.n} ${resName(c.k)} for ${c.origin}. The harbour's reputation drops.`), 'warn', 'bad');
+    }
+  }
+  if (g.merchant && g.day >= g.merchant.leave) g.merchant = null;
+  if (!homePortReady(g) || stormOn(g)) return;
+  if (g.nextShip == null) { g.nextShip = g.day + SHIP.firstDelay; return; }
+  if (g.day < g.nextShip || g.merchant) return;
+  const [a, b] = SHIP.every;
+  const faster = g.buildings.some((o) => o.type === 'lighthouse' && !o.build) ? 0.65 : 1;
+  g.nextShip = g.day + Math.round((a + Math.random() * (b - a)) * faster);
+  const offer = makeContract(g);
+  if (!offer) return;
+  g.merchant = { origin: offer.origin, leave: g.day + SHIP.dock };
+  g.pending.push({ type: 'ship', offer });
+  log(g, L(`Un navire marchand de ${offer.origin} accoste au port.`, `A merchant ship from ${offer.origin} docks at the harbour.`));
+}
+
+export function acceptContract(g, offer) {
+  g.contracts ??= [];
+  if (g.contracts.length >= SHIP.maxContracts) return { ok: false, reason: L(`Pas plus de ${SHIP.maxContracts} contrats à la fois`, `No more than ${SHIP.maxContracts} contracts at a time`) };
+  g.contracts.push({ ...offer, until: g.day + offer.days });
+  log(g, L(`Contrat accepté : ${offer.n} ${resName(offer.k)} pour ${offer.origin}.`, `Contract accepted: ${offer.n} ${resName(offer.k)} for ${offer.origin}.`), 'good');
+  return { ok: true };
+}
+
+export function deliverContract(g, id) {
+  const c = (g.contracts || []).find((o) => o.id === Number(id));
+  if (!c) return { ok: false, reason: L('Contrat introuvable', 'Contract not found') };
+  if (g.goods[c.k] < c.n) return { ok: false, reason: L(`Il manque ${Math.ceil(c.n - g.goods[c.k])} ${resName(c.k)}`, `${Math.ceil(c.n - g.goods[c.k])} ${resName(c.k)} missing`) };
+  g.goods[c.k] -= c.n;
+  gain(g, c.reward);
+  g.contracts = g.contracts.filter((o) => o !== c);
+  g.shipRep = (g.shipRep || 0) + 1;
+  g.stats.contracts = (g.stats.contracts || 0) + 1;
+  notify(g, L(`Contrat honoré pour ${c.origin} : ${costText(c.reward)}. La réputation du port grandit.`, `Contract fulfilled for ${c.origin}: ${costText(c.reward)}. The harbour's reputation grows.`), 'good', 'coin');
+  return { ok: true };
+}
+
+// Pour les tests (console) : faire accoster un navire tout de suite.
+export function forceShip(g) { g.nextShip = g.day; g.merchant = null; updateMerchants(g); }
+
+// Pour les tests (console) : déclencher une catastrophe tout de suite.
+export const forceWeather = (g, type) => startWeather(g, type);
+
+function updateWeather(g) {
+  const w = g.weather;
+  if (w) {
+    if (w.phase === 'warn' && g.day >= w.at) {
+      w.phase = 'on';
+      const msg = {
+        tornado: L('La tornade touche l\'île !', 'The tornado hits the island!'),
+        storm: L('La tempête fait rage : les bateaux restent au port.', 'The storm is raging: ships stay in port.'),
+        heat: L('La canicule commence.', 'The heatwave begins.'),
+      }[w.type];
+      notify(g, msg, 'danger', 'alarm');
+    }
+    if (w.phase === 'on' && w.type === 'tornado') {
+      const nx = w.x + w.dx * WEATHER.tornado.speed, ny = w.y + w.dy * WEATHER.tornado.speed;
+      tornadoDamage(g, w.x, w.y, nx, ny);
+      w.x = nx; w.y = ny; w.steps--;
+      if (w.steps <= 0) { g.weather = null; notify(g, L('La tornade s\'est éloignée.', 'The tornado has moved away.'), 'good'); }
+    } else if (w.phase === 'on' && g.day >= w.end) {
+      g.weather = null;
+      notify(g, w.type === 'storm' ? L('La tempête est passée.', 'The storm has passed.') : L('La canicule est terminée.', 'The heatwave is over.'), 'good');
+    }
+    return;
+  }
+  if (g.day < WEATHER.calmDays) return;
+  const s = season(g);
+  for (const type of ['tornado', 'storm', 'heat']) {
+    const W = WEATHER[type];
+    if (g.era < W.minEra || !W.seasons.includes(s)) continue;
+    if (type === 'storm' && !g.buildings.some((b) => b.type === 'fisher' || b.type === 'port')) continue;
+    if (Math.random() < W.chance * g.mods.events) { startWeather(g, type); return; }
+  }
+}
+
 export function acceptOffer(g, offer) {
   if (g.goods[offer.give.k] < offer.give.n) return { ok: false, reason: L('Vous n\'avez plus assez de marchandises', 'You no longer have enough goods') };
   g.goods[offer.give.k] -= offer.give.n;
@@ -851,6 +1042,8 @@ export function step(g) {
     if (!d.produces || !isWorking(b)) continue;
     let eff = b.assigned / d.workers[1];
     if (d.seasonal) eff *= d.seasonal[s];
+    if (b.type === 'fisher' && stormOn(g)) eff = 0;
+    if (d.fertile && weatherOn(g, 'heat')) eff *= WEATHER.heat.crops;
     if (d.fertile) {
       let n = 0;
       for (let dy = 0; dy < d.size; dy++) for (let dx = 0; dx < d.size; dx++) if (g.tiles[idx(b.x + dx, b.y + dy)] === T.FERTILE) n++;
@@ -983,6 +1176,8 @@ export function step(g) {
   }
 
   rollEvent(g);
+  updateWeather(g);
+  updateMerchants(g);
   rebuild(g);
   checkQuests(g);
 
@@ -1003,7 +1198,8 @@ export function serialize(g) {
     goods: g.goods, gold: g.gold, day: g.day, era: g.era, tax: g.tax, quest: g.quest,
     log: g.log.slice(0, 50), history: g.history, prices: g.prices, nextId: g.nextId, won: g.won, stats: g.stats, alerts: g.alerts,
     tech: g.tech, rp: g.rp, difficulty: g.difficulty,
-    filled: g.filled, renown: g.renown,
+    filled: g.filled, renown: g.renown, weather: g.weather || null,
+    contracts: g.contracts || [], shipRep: g.shipRep || 0, nextShip: g.nextShip ?? null, merchant: g.merchant || null,
   });
 }
 

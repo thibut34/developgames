@@ -1,12 +1,12 @@
 // Interface HTML : barre du haut, barre d'outils, panneaux, info-bulles, fenêtres, messages.
 import {
-  BUILDINGS, GOODS, GOOD_KEYS, GOLD, BAR_GOODS, TOOLS, CATEGORIES, ERAS, CLASSES, TERRAIN, CLEAR,
+  MAP, BUILDINGS, GOODS, GOOD_KEYS, GOLD, BAR_GOODS, TOOLS, CATEGORIES, ERAS, CLASSES, TERRAIN, CLEAR,
   TAXES, QUESTS, SEASONS, FIRE, WORKFORCE, TECHS,
 } from './config.js';
 import {
   storage, canAfford, amount, eraLocked, def, isWorking, houseNeeds, upgradeStatus, eraStatus,
   questProgress, buyPrice, sellPrice, tradeHasPost, dateText, season, capOf, isHouse, population,
-  lockReason, techStatus, renownStatus,
+  lockReason, techStatus, renownStatus, WEATHER_NAMES,
 } from './game.js';
 import { DIFFICULTIES } from './scenarios.js';
 import { icon } from './icons.js';
@@ -101,6 +101,17 @@ export function createUI(app) {
     $('#tb-happy .val').textContent = pct(h / 100);
     $('#tb-happy').className = `tb-item ${h >= 70 ? 'good' : h >= 45 ? '' : 'bad'}`;
     $('#tb-happy').title = L('Satisfaction moyenne des habitants', 'Average satisfaction of the residents');
+    // Catastrophe annoncée ou en cours
+    const wx = g.weather, wb = $('#tb-weather');
+    wb.hidden = !wx;
+    if (wx) {
+      const name = WEATHER_NAMES[wx.type]();
+      const left = wx.phase === 'warn' ? wx.at - g.day : wx.type === 'tornado' ? wx.steps : wx.end - g.day;
+      wb.className = `tb-item weather ${wx.phase === 'on' ? 'on' : ''}`;
+      wb.innerHTML = `${icon({ tornado: 'tornado', storm: 'cloud-lightning', heat: 'thermometer-sun' }[wx.type])}<span>${wx.phase === 'warn'
+        ? L(`${name} dans ${left} j`, `${name} in ${left} d`) : L(`${name} · ${left} j`, `${name} · ${left} d`)}</span>`;
+      wb.title = wx.phase === 'warn' ? L('Catastrophe annoncée', 'Disaster on its way') : L('Catastrophe en cours', 'Disaster under way');
+    }
     $('#tb-date').innerHTML = `${icon(SEASONS[season(g)].icon)}<span class="date-text">${dateText(g)}</span>`;
     $('#tb-date').title = dateText(g);
     $('#era-name').textContent = ERAS[g.era].name;
@@ -445,6 +456,24 @@ export function createUI(app) {
 
     trade(g) {
       let html = head(L('Commerce', 'Trade'), 'scale');
+      // Contrats maritimes
+      const homePort = g.buildings.some((b) => b.type === 'port' && !b.build && g.isl.id[b.y * MAP + b.x] === 0);
+      html += `<h3>${L('Contrats maritimes', 'Maritime contracts')}</h3>`;
+      if (!homePort) {
+        html += `<p class="muted small">${L('Construisez un port sur l\'île principale (technologie Navigation) : des navires marchands viendront proposer des contrats lucratifs.', 'Build a harbour on the main island (Navigation technology): merchant ships will come and offer lucrative contracts.')}</p>`;
+      } else {
+        const list = g.contracts || [];
+        if (!list.length) html += `<p class="muted small">${L('Aucun contrat en cours. Un navire marchand accostera bientôt.', 'No contract under way. A merchant ship will dock soon.')}</p>`;
+        for (const c of list) {
+          const left = c.until - g.day, ok = g.goods[c.k] >= c.n;
+          html += `<div class="contract"><div class="ct-top"><b>${esc(c.origin)}</b><span class="${left < 10 ? 'warn' : 'muted'} small">${L(`${left} j restants`, `${left} d left`)}</span></div>
+            <div class="ct-row">${goodTag(c.k)} ${fmt(Math.min(g.goods[c.k], c.n))} / ${fmt(c.n)} ${esc(GOODS[c.k].name.toLowerCase())}${icon('chevron-right')}${costHtml(null, c.reward)}</div>
+            ${bar(Math.min(1, g.goods[c.k] / c.n), 'thin')}
+            <button class="${ok ? 'primary' : ''}" data-act="deliver:${c.id}" ${ok ? '' : 'disabled'}>${icon('package-check')}${L('Livrer', 'Deliver')}</button></div>`;
+        }
+        html += `<p class="muted small">${L(`Réputation du port : ${g.shipRep || 0}. Chaque contrat honoré augmente les récompenses ; un contrat expiré la fait baisser.`, `Harbour reputation: ${g.shipRep || 0}. Each contract fulfilled raises the rewards; an expired one lowers it.`)}</p>`;
+      }
+      html += `<h3>${L('Marché', 'Market')}</h3>`;
       html += `<p class="muted small">${tradeHasPost(g)
         ? L('Votre comptoir achète et vend à bon prix.', 'Your trading post buys and sells at good prices.')
         : L('Sans comptoir (ère du Bourg), l\'hôtel de ville achète cher (+50 %) et revend à moitié prix.', 'Without a trading post (Market town era), the town hall buys at a premium (+50%) and sells at half price.')}</p>`;

@@ -2,7 +2,8 @@ import { DAY_MS, BUILDINGS, TOOLS, ERAS, GOODS, CLASSES } from './config.js';
 import {
   createGame, load, save, clearSave, step, place, placeRoadPath, roadPathCost, applyArea, buildingAt,
   upgradeHouse, togglePause, toggleLock, bucketBrigade, advanceEra, buy, sell, acceptOffer, eraLocked, research, lockReason,
-  serialize, deserialize, def, costText, demolishBuilding, rebuild, population, resName, renownTier,
+  serialize, deserialize, def, costText, demolishBuilding, rebuild, population, resName, renownTier, forceWeather,
+  acceptContract, deliverContract, forceShip,
 } from './game.js';
 import { P } from './iso.js';
 import { createRenderer } from './render.js';
@@ -191,6 +192,7 @@ const actions = {
   setTax(i) { g.tax = Number(i); sound('click'); afterChange(); },
   buy(k, n) { const r = buy(g, k, Number(n)); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },
   sell(k, n) { const r = sell(g, k, Number(n)); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },
+  deliver(id) { const r = deliverContract(g, id); if (r.ok) sound('coin'); else fail(r.reason); afterChange(); },
   help() { showHelp(); },
   saveSlot(i) { saveToSlot(Number(i)); },
   toMenu() { save(g); hasAutosave = true; view.closePanel(); showTitle(); },
@@ -342,6 +344,16 @@ function drainEvents() {
         <li><span>${L('Incendies', 'Fires')}</span><b>${g.stats.fires}</b></li></ul>`, [
         { label: L('Continuer à jouer', 'Keep playing'), cls: 'primary' },
       ]);
+    } else if (p.type === 'ship') {
+      const o = p.offer;
+      sound('quest');
+      view.showModal(`<div class="m-ic">${icon('ship')}</div><h2>${L('Navire marchand', 'Merchant ship')}</h2>
+        <p class="center">${L(`Un navire de <b>${o.origin}</b> accoste au port et propose un contrat.`, `A ship from <b>${o.origin}</b> docks at the harbour and offers a contract.`)}</p>
+        <div class="offer">${resLine(o.k, o.n)}${icon('chevron-right')}${Object.entries(o.reward).map(([k, n]) => resLine(k, n)).join('')}</div>
+        <p class="center muted small">${L(`À livrer dans les ${o.days} jours, depuis le panneau Commerce.`, `To deliver within ${o.days} days, from the Trade panel.`)}</p>`, [
+        { label: L('Refuser', 'Decline') },
+        { label: L('Accepter le contrat', 'Accept the contract'), cls: 'primary', onClick: () => { const r = acceptContract(g, o); if (r.ok) { sound('coin'); view.toast(L('Contrat accepté : voyez le panneau Commerce.', 'Contract accepted: see the Trade panel.'), 'good'); } else fail(r.reason); afterChange(); } },
+      ]);
     } else if (p.type === 'monument') {
       sound('victory');
       platform.happy();
@@ -378,7 +390,11 @@ const HELP_FR = [
     ${step_('landmark', 'Chaque bâtiment coûte un entretien en or. Les impôts doivent couvrir les dépenses.')}`],
   ['flask-conical', 'Recherche et colonies', `${step_('flask-conical', 'Les <b>bibliothèques</b> puis les <b>universités</b> produisent des points de recherche. Dépensez-les dans le panneau Recherche : meilleurs rendements, médecin, poste de garde, navigation…')}
     ${step_('ship', 'Avec la Navigation, construisez un <b>port</b> sur l\'île principale, puis un port sur une île voisine pour y fonder une <b>colonie</b>. Les routes de la colonie partent de son port.')}
-    ${step_('gem', 'Les nobles exigent des épices et des bijoux : on ne les trouve que sur l\'île aux épices et l\'île aux filons.')}`],
+    ${step_('gem', 'Les nobles exigent des épices et des bijoux : on ne les trouve que sur l\'île aux épices et l\'île aux filons.')}
+    ${step_('handshake', 'Avec un port sur l\'île principale, des <b>navires marchands</b> proposent des contrats : livrez à temps depuis le panneau Commerce pour de grosses récompenses. Le Grand phare les fait venir plus souvent.')}`],
+  ['tornado', 'Catastrophes', `${step_('tornado', 'Au printemps et en été, une <b>tornade</b> peut traverser l\'île : sa trajectoire est tracée quelques jours avant. Elle détruit ce qu\'elle touche, sauf les monuments.')}
+    ${step_('cloud-lightning', 'En automne et en hiver, une <b>tempête</b> arrête la pêche et coupe la liaison avec les colonies : gardez des réserves.')}
+    ${step_('thermometer-sun', 'En été, une <b>canicule</b> triple le risque d\'incendie et réduit les récoltes. La technologie Météorologie donne l\'alerte plus tôt et limite les dégâts.')}`],
   ['flame', 'Saisons et incendies', `${step_('snowflake', 'Presque rien ne pousse en hiver : faites des réserves de nourriture à l\'automne.')}
     ${step_('flame', 'Le feu peut prendre et se propager aux voisins. Un <b>poste d\'incendie</b> empêche les départs de feu dans sa zone et éteint vite les incendies ; un puits permet une chaîne de seaux.')}
     ${step_('layers', 'Les <b>calques</b> (bouton à droite) montrent l\'eau, les marchés, la protection incendie, la beauté et la satisfaction.')}`],
@@ -400,7 +416,11 @@ const HELP_EN = [
     ${step_('landmark', 'Every building costs gold in upkeep. Taxes must cover the expenses.')}`],
   ['flask-conical', 'Research and colonies', `${step_('flask-conical', '<b>Libraries</b> and then <b>universities</b> produce research points. Spend them in the Research panel: better yields, doctor, guard post, navigation…')}
     ${step_('ship', 'With Navigation, build a <b>harbour</b> on the main island, then a harbour on a nearby island to found a <b>colony</b>. The colony\'s roads start from its harbour.')}
-    ${step_('gem', 'Nobles demand spices and jewellery: they are only found on the spice island and the gold island.')}`],
+    ${step_('gem', 'Nobles demand spices and jewellery: they are only found on the spice island and the gold island.')}
+    ${step_('handshake', 'With a harbour on the main island, <b>merchant ships</b> offer contracts: deliver on time from the Trade panel for big rewards. The Great Lighthouse brings them more often.')}`],
+  ['tornado', 'Disasters', `${step_('tornado', 'In spring and summer, a <b>tornado</b> can cross the island: its path is drawn a few days ahead. It destroys what it touches, except monuments.')}
+    ${step_('cloud-lightning', 'In autumn and winter, a <b>storm</b> stops fishing and cuts the link with the colonies: keep reserves.')}
+    ${step_('thermometer-sun', 'In summer, a <b>heatwave</b> triples the fire risk and reduces harvests. The Meteorology technology warns you earlier and limits the damage.')}`],
   ['flame', 'Seasons and fires', `${step_('snowflake', 'Almost nothing grows in winter: stock up on food in autumn.')}
     ${step_('flame', 'Fire can break out and spread to neighbours. A <b>fire station</b> prevents fires in its area and puts them out quickly; a well allows a bucket brigade.')}
     ${step_('layers', 'The <b>view layers</b> (button on the right) show water, markets, fire protection, beauty and satisfaction.')}`],
@@ -580,6 +600,8 @@ window.DG = {
   give(k, n) { if (k === 'gold') g.gold += n; else g.goods[k] += n; afterChange(); },
   days(n) { for (let i = 0; i < n; i++) step(g); afterChange(); },
   load(text) { startGame(deserialize(text)); },
+  weather(type) { forceWeather(g, type); afterChange(); },
+  ship() { forceShip(g); afterChange(); },
   draw(dt = 0) { renderer.draw(g, cam, { ...ui, speed: dt ? 1 : 0 }, dt); },
 };
 void costText; void TOOLS;

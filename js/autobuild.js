@@ -77,18 +77,27 @@ export function createBot(seed, opts = {}) {
     }
     return k;
   };
+  // Petits bâtiments qu'on accepte de démolir pour faire place à un monument (comme un joueur le ferait).
+  const SMALL = new Set(['garden', 'ruins', 'well', 'statue']);
   const clearFor = (type) => {
     const d = BUILDINGS[type];
     const ok = new Set([T.GRASS, T.FERTILE, T.SAND, T.FOREST]);
     for (const [x, y] of spots) {
       let fits = true;
+      const remove = new Set();
       for (let j = 0; j < d.size && fits; j++) {
         for (let i = 0; i < d.size && fits; i++) {
           const k = (y + j) * MAP + x + i;
-          if (x + i >= MAP || y + j >= MAP || !ok.has(g.tiles[k]) || g.occ[k] || g.roads[k] || g.isl.id[k] !== 0) fits = false;
+          if (x + i >= MAP || y + j >= MAP || !ok.has(g.tiles[k]) || g.roads[k] || g.isl.id[k] !== 0) { fits = false; break; }
+          if (g.occ[k]) {
+            const b = g.byId.get(g.occ[k]);
+            if (b && (SMALL.has(b.type) || (b.type === 'house' && b.level === 1))) remove.add(b); else fits = false;
+          }
         }
       }
       if (!fits) continue;
+      for (const b of remove) m.demolishBuilding(g, b);
+      if (remove.size) m.rebuild(g);
       if (d.near != null) {
         let touch = false;
         for (let j = -1; j <= d.size && !touch; j++) for (let i = -1; i <= d.size && !touch; i++) if (m.tileAt(g, x + i, y + j) === d.near) touch = true;
@@ -271,6 +280,12 @@ export function createBot(seed, opts = {}) {
     // Après la cathédrale : les grands monuments, puis le palais à l'ère de la Capitale.
     if (nextMon) tryPlace(nextMon);
     manageLocks();
+    // Les ruines (incendies, tornades) sont déblayées pour reconstruire.
+    if (g.day % 5 === 0) {
+      const ruins = g.buildings.filter((b) => b.type === 'ruins');
+      for (const b of ruins) m.demolishBuilding(g, b);
+      if (ruins.length) m.rebuild(g);
+    }
 
     // Commerce : acheter ce qui manque (coûts de l'ère suivante, chantiers), vendre les surplus.
     const sites = g.buildings.filter((b) => b.build && BUILDINGS[b.type].buildUse);

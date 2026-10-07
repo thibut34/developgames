@@ -30,7 +30,13 @@ export function sparkle(x, y) {
   }
 }
 
-export function update(dt, seasonIdx, w, h) {
+let stormy = false;
+let flash = 0;
+export function update(dt, seasonIdx, w, h, storm = false) {
+  stormy = storm;
+  // Éclairs de temps en temps pendant la tempête
+  flash = Math.max(0, flash - dt * 4);
+  if (storm && Math.random() < dt * 0.25) flash = 1;
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
     p.life += dt;
@@ -48,8 +54,9 @@ export function update(dt, seasonIdx, w, h) {
   }
 
   // Météo selon la saison : neige l'hiver, feuilles à l'automne, petite pluie au printemps.
-  const kind = ['rain', null, 'leaf', 'snow'][seasonIdx];
-  const target = kind === 'snow' ? 90 : kind === 'leaf' ? 25 : kind === 'rain' ? 40 : 0;
+  // Tempête : pluie battante, quelle que soit la saison.
+  const kind = storm ? 'rain' : ['rain', null, 'leaf', 'snow'][seasonIdx];
+  const target = storm ? 320 : kind === 'snow' ? 90 : kind === 'leaf' ? 25 : kind === 'rain' ? 40 : 0;
   while (weather.length < target) weather.push(newFlake(kind, w, h, true));
   for (let i = weather.length - 1; i >= 0; i--) {
     const f = weather[i];
@@ -120,9 +127,13 @@ export function drawWeather(ctx) {
       ctx.fillStyle = f.color;
       ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, f.r * 0.5, f.t * 3, 0, Math.PI * 2); ctx.fill();
     } else {
-      ctx.strokeStyle = 'rgba(180,200,230,0.35)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x - 3, f.y + 10); ctx.stroke();
+      ctx.strokeStyle = stormy ? 'rgba(200,215,240,0.55)' : 'rgba(180,200,230,0.35)';
+      ctx.lineWidth = stormy ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x - (stormy ? 7 : 3), f.y + (stormy ? 20 : 10)); ctx.stroke();
     }
+  }
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(235,240,255,${0.35 * flash})`;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   }
 }

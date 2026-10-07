@@ -149,7 +149,7 @@ export const ERAS = [
   { name: 'Ville', need: [2, 350], cost: { stone: 300, tools: 80, gold: 6000 } },
   { name: 'Cité', need: [3, 350], cost: { stone: 500, tools: 160, gold: 12000 } },
   // Après la Grande Cathédrale : une très grande cité, pour qui veut continuer à bâtir.
-  { name: 'Capitale', need: [3, 1200], cost: { stone: 800, tools: 150, gold: 30000 }, after: 'wonder' },
+  { name: 'Capitale', need: [3, 1000], cost: { stone: 800, tools: 150, gold: 30000 }, after: 'wonder' },
 ];
 
 export const CATEGORIES = [
@@ -434,6 +434,16 @@ export const FIRE = {
   bucketCost: 15,        // chaîne de seaux (près d'un puits)
 };
 
+// ---------- Catastrophes naturelles ----------
+// chance : probabilité par jour (saisons et ère permises), multipliée par la difficulté.
+// warn : jours d'alerte avant l'arrivée. days : durée [min, max].
+export const WEATHER = {
+  calmDays: 150,          // aucune catastrophe pendant les premiers jours de la partie
+  tornado: { minEra: 1, seasons: [0, 1], chance: 0.006, warn: 3, speed: 12, radius: 1.6, destroy: 0.55 },
+  storm: { minEra: 1, seasons: [2, 3], chance: 0.008, warn: 2, days: [6, 10] },
+  heat: { minEra: 1, seasons: [1], chance: 0.01, warn: 1, days: [12, 18], fire: 3, crops: 0.7 },
+};
+
 // ---------- Recherche ----------
 // Les technologies s'achètent avec des points de recherche (bibliothèques, universités).
 // effect : prod (multiplicateur par bâtiment), range (+cases de portée par service), fireHouse, storage,
@@ -454,6 +464,7 @@ export const TECHS = [
   { id: 'blast', name: 'Haut fourneau', era: 2, cost: 570, icon: 'flame-kindling', desc: 'Charbonniers, fonderies et forges +25 %.', effect: { prod: { charcoal: 1.25, smelter: 1.25, forge: 1.25 } } },
   { id: 'cadastre', name: 'Cadastre', era: 2, cost: 600, icon: 'map', req: ['administration'], desc: 'Impôts +10 %.', effect: { tax: 1.1 } },
   { id: 'hygiene', name: 'Hygiène', era: 2, cost: 630, icon: 'droplets', req: ['medicine'], desc: 'Satisfaction de tous les habitants +5 %.', effect: { sat: 0.05 } },
+  { id: 'weather', name: 'Météorologie', era: 2, cost: 450, icon: 'cloud-lightning', desc: 'Alertes deux jours plus tôt, dégâts des tornades −50 % et tempêtes plus courtes.', effect: { weather: 0.5 } },
   { id: 'navigation', name: 'Navigation', era: 2, cost: 750, icon: 'compass', desc: 'Débloque le port et la colonisation des îles voisines.', effect: {} },
   { id: 'printing', name: 'Imprimerie', era: 3, cost: 1050, icon: 'book-open', req: ['hygiene'], desc: 'Recherche +30 % et portée des écoles +2.', effect: { research: 1.3, range: { school: 2 } } },
   { id: 'surgery', name: 'Chirurgie', era: 3, cost: 1125, icon: 'heart-pulse', req: ['medicine'], desc: 'Débloque l\'hôpital.', effect: {} },
