@@ -200,6 +200,53 @@ export function drawScaffold(ctx, b, top, progress) {
   ctx.fillRect(c[0] - w / 2 + 1, top - 13, (w - 2) * progress, 4);
 }
 
+// ---------- Cache d'images des bâtiments ----------
+// Redessiner chaque bâtiment trait par trait à chaque image coûte trop cher dans une grande cité :
+// chaque aspect (type, niveau, saison…) est dessiné une fois dans une petite image, puis recopié.
+// Les bâtiments animés (eau, lumière) restent dessinés à chaque image.
+const ANIMATED = new Set(['fountain', 'royalgarden', 'lighthouse']);
+const sprites = new Map();
+const MARGIN_X = 56, ROOM_UP = 190, ROOM_DOWN = 12;
+
+const variantOf = (b, d) => (d.look === 'house' ? (b.x + b.y) % 3 : d.look === 'garden' ? (b.x + b.y) % 5 : 0);
+
+function spriteKey(b, env, d, scale) {
+  const variant = variantOf(b, d);
+  const empty = d.look === 'house' && (b.res ?? 1) < 0.5 ? 1 : 0;
+  const era = d.look === 'townhall' ? env.era : 0;
+  return `${b.type}|${b.level || 1}|${env.season}|${era}|${empty}|${b.output ? 1 : 0}|${variant}|${scale}`;
+}
+
+export function drawBuildingCached(ctx, b, env, zoom) {
+  const d = BUILDINGS[b.type];
+  if (ANIMATED.has(d.look)) return drawBuilding(ctx, b, env);
+  const scale = Math.max(0.25, Math.min(3, Math.round(zoom * 4) / 4));
+  const key = spriteKey(b, env, d, scale);
+  let sp = sprites.get(key);
+  if (!sp) {
+    if (sprites.size > 900) sprites.clear();
+    const s = d.size;
+    const v = variantOf(b, d);
+    const [x0] = P(v, s), [x1] = P(v + s, 0), [, y0] = P(v, 0), [, y1] = P(v + s, s);
+    const left = x0 - MARGIN_X, top = y0 - ROOM_UP;
+    const w = x1 + MARGIN_X - left, h = y1 + ROOM_DOWN - top;
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(w * scale);
+    c.height = Math.ceil(h * scale);
+    const cx = c.getContext('2d');
+    cx.setTransform(scale, 0, 0, scale, -left * scale, -top * scale);
+    // Même dessin, posé en (v, 0) : v reproduit la variante (couleurs des fleurs…) liée à la position.
+    const r = drawBuilding(cx, { ...b, x: v, y: 0 }, env);
+    sp = { c, left, top, w, h, top0: r.top, smoke: r.smoke };
+    sprites.set(key, sp);
+  }
+  const [ox, oy] = P(b.x, b.y);
+  const [bx, by] = P(variantOf(b, d), 0);
+  const dx = ox - bx, dy = oy - by;
+  ctx.drawImage(sp.c, sp.left + dx, sp.top + dy, sp.w, sp.h);
+  return { top: sp.top0 + dy, smoke: sp.smoke ? [sp.smoke[0] + dx, sp.smoke[1] + dy] : null };
+}
+
 // Dessine un bâtiment. Renvoie { top: y du point le plus haut, smoke: point de fumée ou null }.
 const FLAT = ['farm', 'sheep', 'vineyard', 'spicefarm', 'garden', 'park', 'market', 'ruins', 'well', 'fountain', 'statue', 'port', 'wonder', 'royalgarden', 'arena', 'palace'];
 

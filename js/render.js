@@ -1,7 +1,7 @@
 // Rendu de la carte isométrique : terrain, routes, calques, objets triés par profondeur, effets.
-import { MAP, T, BUILDINGS, GOODS, CLEAR } from './config.js';
+import { MAP, T, TW, TH, BUILDINGS, GOODS, CLEAR } from './config.js';
 import { P, WORLD_W, WORLD_H, worldToTile } from './iso.js';
-import { drawBuilding, drawScaffold, poly } from './draw.js';
+import { drawBuilding, drawBuildingCached, drawScaffold, poly } from './draw.js';
 import { tree, mountain } from './sprites.js';
 import { iconImage } from './icons.js';
 import * as fx from './fx.js';
@@ -123,15 +123,43 @@ function drawTerrain(ctx, g, s, X0, Y0, X1, Y1) {
   }
 }
 
-function drawRoad(ctx, g, x, y, paved, connected) {
+// Routes : chaque forme (raccords, pavée ou non, reliée ou non) est dessinée une fois dans une image.
+const roadSprites = new Map();
+function drawRoadCached(ctx, g, x, y, paved, connected, zoom) {
+  const mask = (roadAt(g, x + 1, y) ? 1 : 0) | (roadAt(g, x - 1, y) ? 2 : 0) | (roadAt(g, x, y + 1) ? 4 : 0) | (roadAt(g, x, y - 1) ? 8 : 0);
+  const scale = Math.max(0.25, Math.min(3, Math.round(zoom * 4) / 4));
+  const variant = paved ? (x * 7 + y * 13) % 4 : 0;
+  const key = `${mask}|${paved ? 1 : 0}|${connected ? 1 : 0}|${variant}|${scale}`;
+  let sp = roadSprites.get(key);
+  if (!sp) {
+    if (roadSprites.size > 600) roadSprites.clear();
+    const left = P(0, 1)[0] - 2, top = P(0, 0)[1] - 3;
+    const w = TW + 4, h = TH + 6;
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(w * scale);
+    c.height = Math.ceil(h * scale);
+    const cx = c.getContext('2d');
+    cx.setTransform(scale, 0, 0, scale, -left * scale, -top * scale);
+    // Une case factice dont les voisins reproduisent les raccords, et une graine qui donne la variante des pavés.
+    const fake = { roads: { 1: mask & 1, 2: mask & 2, 4: mask & 4, 8: mask & 8 } };
+    drawRoad(cx, null, 0, 0, paved, connected, fake.roads, variant);
+    sp = { c, left, top, w, h };
+    roadSprites.set(key, sp);
+  }
+  const [ox, oy] = P(x, y), [bx, by] = P(0, 0);
+  ctx.drawImage(sp.c, sp.left + ox - bx, sp.top + oy - by, sp.w, sp.h);
+}
+
+function drawRoad(ctx, g, x, y, paved, connected, nb = null, variant = 0) {
   const q = (u0, v0, u1, v1) => [P(x + u0, y + v0), P(x + u1, y + v0), P(x + u1, y + v1), P(x + u0, y + v1)];
   const color = paved ? '#aaa59c' : '#b99a66';
   const edge = paved ? '#8c877e' : '#9a7c4f';
   const parts = [q(0.22, 0.22, 0.78, 0.78)];
-  if (roadAt(g, x + 1, y)) parts.push(q(0.78, 0.22, 1, 0.78));
-  if (roadAt(g, x - 1, y)) parts.push(q(0, 0.22, 0.22, 0.78));
-  if (roadAt(g, x, y + 1)) parts.push(q(0.22, 0.78, 0.78, 1));
-  if (roadAt(g, x, y - 1)) parts.push(q(0.22, 0, 0.78, 0.22));
+  const has = (dx, dy, bit) => (nb ? nb[bit] : roadAt(g, x + dx, y + dy));
+  if (has(1, 0, 1)) parts.push(q(0.78, 0.22, 1, 0.78));
+  if (has(-1, 0, 2)) parts.push(q(0, 0.22, 0.22, 0.78));
+  if (has(0, 1, 4)) parts.push(q(0.22, 0.78, 0.78, 1));
+  if (has(0, -1, 8)) parts.push(q(0.22, 0, 0.78, 0.22));
   for (const p of parts) poly(ctx, p, edge);
   ctx.save();
   ctx.translate(0, -1);
@@ -140,7 +168,7 @@ function drawRoad(ctx, g, x, y, paved, connected) {
   if (paved) {
     ctx.fillStyle = 'rgba(255,255,255,0.16)';
     for (let i = 0; i < 3; i++) {
-      const p = P(x + 0.3 + hash(x, y, i) * 0.4, y + 0.3 + hash(y, x, i) * 0.4);
+      const p = P(x + 0.3 + hash(variant, 3, i) * 0.4, y + 0.3 + hash(3, variant, i) * 0.4);
       ctx.fillRect(p[0] - 2, p[1] - 2, 4, 2);
     }
   }
@@ -298,7 +326,7 @@ export function createRenderer(canvas) {
     const paved = g.era >= 2;
     for (let j = ty0; j <= ty1; j++) {
       for (let i = tx0; i <= tx1; i++) {
-        if (g.roads[j * MAP + i] && inView(i, j)) drawRoad(ctx, g, i, j, paved, g.roadConn[j * MAP + i] === 1);
+        if (g.roads[j * MAP + i] && inView(i, j)) drawRoadCached(ctx, g, i, j, paved, g.roadConn[j * MAP + i] === 1, z);
       }
     }
 
@@ -384,7 +412,7 @@ export function createRenderer(canvas) {
         depth: b.x + b.y + 2 * (sz - 1) + 0.4,
         draw: () => {
           if (b.build) ctx.globalAlpha = 0.45;
-          const r = drawBuilding(ctx, b, env);
+          const r = drawBuildingCached(ctx, b, env, z);
           ctx.globalAlpha = 1;
           if (b.build) drawScaffold(ctx, b, r.top, 1 - b.build / def(b).buildDays);
           b.screenTop = r.top;
